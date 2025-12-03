@@ -1,0 +1,61 @@
+export const POLY_PLINKO_GAME_ADDRESS =
+  process.env.NEXT_PUBLIC_GAME_CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000"
+export const POLY_PLINKO_TOKEN_ADDRESS =
+  process.env.NEXT_PUBLIC_PPL_CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000"
+
+export const POLYGON_CHAIN_ID = 137
+export const POLYGON_AMOY_CHAIN_ID = 80002
+
+export const GAME_ABI = [
+  "function playPlinko((uint8 rows, uint16 balls, uint8 risk, uint256 betPerBall) config) payable",
+  "function swapExactMaticForTokens(uint256 minTokensOut) payable",
+  "function swapExactTokensForMatic(uint256 tokenAmountIn, uint256 minMaticOut)",
+  "function buybackAndBurn()",
+  "function getPlayerGames(address player) view returns (uint256[])",
+  "function getLossMiningTierInfo() view returns (uint256 tier, uint256 pricePerToken, uint256 tokensLeftInTier)",
+  "function getSwapQuoteMaticToTokens(uint256 maticIn) view returns (uint256)",
+  "function getSwapQuoteTokensToMatic(uint256 tokensIn) view returns (uint256)",
+  "function games(uint256) view returns (address player, uint8 rows, uint16 balls, uint8 risk, uint256 betPerBall, uint256 totalBet, uint256 totalPayout, uint64 requestId, uint256 randomSeed, bool settled, uint40 createdAt)",
+  "function houseBankroll() view returns (uint256)",
+  "function miningEmitted() view returns (uint256)",
+  "function reserveMatic() view returns (uint256)",
+  "function reserveToken() view returns (uint256)",
+  "function totalTokensBurned() view returns (uint256)",
+  "event GameSettled(uint256 indexed gameId, address indexed player, uint256 randomSeed, uint256 totalBet, uint256 totalPayout, int256 profit, uint256 tokensEarned)",
+] as const
+
+export const TOKEN_ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function totalSupply() view returns (uint256)",
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
+  "function name() view returns (string)",
+] as const
+
+export const GAME_CONTRACT_ABI = GAME_ABI
+export const TOKEN_CONTRACT_ABI = TOKEN_ABI
+
+export enum RiskLevel {
+  Low = 0,
+  Medium = 1,
+  High = 2,
+}
+
+export interface GameConfig {
+  rows: number
+  balls: number
+  risk: RiskLevel
+  betPerBall: bigint
+}
+
+export interface GameResult {
+  gameId: bigint
+  player: string
+  randomSeed: bigint
+  totalBet: bigint
+  totalPayout: bigint
+  profit: bigint
+  tokensEarned: bigint
+}
