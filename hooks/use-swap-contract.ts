@@ -74,29 +74,31 @@ export function useSwapQuotes() {
     functionName: "reserveToken",
   })
 
+  const reserveMaticValue = typeof reserveMatic === "bigint" ? reserveMatic : 0n
+  const reserveTokenValue = typeof reserveToken === "bigint" ? reserveToken : 0n
   const getQuoteMaticToTokens = (maticIn: bigint): bigint => {
-    if (!reserveMatic || !reserveToken || reserveMatic === 0n) return 0n
+    if (reserveMaticValue === 0n || reserveTokenValue === 0n) return 0n
 
     // Apply 5% fee
     const maticAfterFee = (maticIn * 95n) / 100n
 
     // Constant product formula: tokensOut = (maticIn * reserveToken) / (reserveMatic + maticIn)
-    return (maticAfterFee * reserveToken) / (reserveMatic + maticAfterFee)
+    return (maticAfterFee * reserveTokenValue) / (reserveMaticValue + maticAfterFee)
   }
 
   const getQuoteTokensToMatic = (tokensIn: bigint): bigint => {
-    if (!reserveMatic || !reserveToken || reserveToken === 0n) return 0n
+    if (reserveMaticValue === 0n || reserveTokenValue === 0n) return 0n
 
     // Apply 5% fee (tokens are burned)
     const tokensAfterFee = (tokensIn * 95n) / 100n
 
     // Constant product formula: maticOut = (tokensIn * reserveMatic) / (reserveToken + tokensIn)
-    return (tokensAfterFee * reserveMatic) / (reserveToken + tokensAfterFee)
+    return (tokensAfterFee * reserveMaticValue) / (reserveTokenValue + tokensAfterFee)
   }
 
   return {
-    reserveMatic,
-    reserveToken,
+    reserveMatic: reserveMaticValue,
+    reserveToken: reserveTokenValue,
     getQuoteMaticToTokens,
     getQuoteTokensToMatic,
   }
@@ -144,6 +146,6 @@ export function useBuybackAndBurn() {
     isConfirming,
     isSuccess,
     totalBurned,
-    totalBurnedFormatted: totalBurned ? formatEther(totalBurned) : "0",
+    totalBurnedFormatted: typeof totalBurned === "bigint" ? formatEther(totalBurned) : "0",
   }
 }

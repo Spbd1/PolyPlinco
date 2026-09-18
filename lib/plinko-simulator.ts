@@ -1,17 +1,20 @@
 import { RiskLevel } from "./contracts"
+import { encodeAbiParameters, keccak256 } from "viem"
 
 /**
  * Client-side Plinko ball path simulator
  * Uses the same random seed as the contract for consistency
  */
 
-interface Point {
+export interface BallPathPoint {
   x: number
   y: number
+  /** Relative time spent travelling to this point. */
+  duration?: number
 }
 
 export interface BallPath {
-  path: Point[]
+  path: BallPathPoint[]
   finalSlot: number
   multiplier: number
 }
@@ -24,37 +27,58 @@ export interface BallPath {
  * @param rows Number of rows
  * @returns Array of positions for animation
  */
-export function simulateBallPath(baseSeed: bigint, gameId: string, ballIndex: number, rows: number): Point[] {
-  const path: Point[] = []
-  const width = 100 // Percentage width
-  const height = 100 // Percentage height
-
-  let x = width / 2 // Start at top center
-  let y = 0
-
-  path.push({ x, y })
-
-  // Generate deterministic random for this ball
+export function simulateBallPath(
+  baseSeed: bigint,
+  gameId: string,
+  ballIndex: number,
+  rows: number,
+  originX = 50,
+): BallPathPoint[] {
+  const path: BallPathPoint[] = []
+  const targetSlot = getFinalSlot(baseSeed, gameId, ballIndex, rows, computeBinomialWeights(rows))
+  const targetX = 17 + (targetSlot / (rows + 1)) * 66
   const seed = generateBallSeed(baseSeed, gameId, ballIndex)
-  let random = seed
+  const stepHeight = 72 / (rows + 1)
+  const stepCount = rows + 1
+  const boardStep = 66 / (rows + 1)
+  const clampedOrigin = Math.max(18, Math.min(82, originX))
+  let currentX = clampedOrigin
+  let momentum = 0
 
-  const rowHeight = height / (rows + 1)
-  const maxDisplacement = width / (2 * (rows + 1))
-
-  // Simulate each row
+  path.push({ x: clampedOrigin, y: 3, duration: 0.18 })
   for (let row = 0; row <= rows; row++) {
-    // Deterministic left/right decision
-    const direction = random % 2n === 0n ? -1 : 1
-    random = BigInt(keccak256Hash(random.toString()))
+    const layerY = 7 + stepHeight * row
+    const direction = ((seed >> BigInt((row * 5 + 3) % 61)) & 1n) === 0n ? -1 : 1
+    const variation = Number((seed >> BigInt((row * 7 + 11) % 61)) & 15n) / 15
+    const targetPull = (targetX - currentX) * (0.16 + variation * 0.08)
+    const collisionBias = direction * (0.8 + variation * 1.25)
+    const desiredPegX = Math.max(18, Math.min(82, currentX + momentum * 0.45 + targetPull + collisionBias))
+    const pegCount = row + 1
+    const pegStart = 50 - ((pegCount - 1) * boardStep) / 2
+    const nearestPeg = Math.round((desiredPegX - pegStart) / boardStep)
+    const pegX = pegCount === 1
+      ? 50
+      : pegStart + Math.max(0, Math.min(pegCount - 1, nearestPeg)) * boardStep
+    const approachX = Math.max(18, Math.min(82, currentX + momentum * 0.32 + (pegX - currentX) * 0.62))
+    const bounce = 0.65 + variation * 0.65
+    const reboundMomentum = direction * (1.1 + variation * 1.6) + momentum * 0.34
+    const exitX = Math.max(18, Math.min(82, pegX + reboundMomentum))
 
-    x += direction * maxDisplacement * (1 + row * 0.1)
-    y += rowHeight
-
-    // Keep within bounds
-    x = Math.max(0, Math.min(width, x))
-
-    path.push({ x, y })
+    // Each layer has a falling approach, a short contact, and a visible
+    // upward rebound before the next gravity-driven arc. The small duration
+    // weights avoid the old glide/pause/slide rhythm without adding a physics
+    // dependency. Target pull is applied at every layer, never as a last-row
+    // correction, so the final bucket remains believable.
+    path.push({ x: approachX, y: layerY - 1.7, duration: 0.34 + variation * 0.08 })
+    path.push({ x: pegX, y: layerY, duration: 0.08 + variation * 0.025 })
+    path.push({ x: pegX + reboundMomentum * 0.18, y: layerY - bounce, duration: 0.11 + (1 - variation) * 0.03 })
+    path.push({ x: exitX, y: layerY + stepHeight * 0.52, duration: 0.38 + (1 - variation) * 0.1 })
+    currentX = exitX
+    momentum = reboundMomentum
   }
+
+  path.push({ x: targetX, y: 82, duration: 0.42 })
+  path.push({ x: targetX, y: 85, duration: 0.12 })
 
   return path
 }
@@ -64,22 +88,14 @@ export function simulateBallPath(baseSeed: bigint, gameId: string, ballIndex: nu
  * Matches the contract's randomForBall function
  */
 export function generateBallSeed(baseSeed: bigint, gameId: string, ballIndex: number): bigint {
-  const combined = `${baseSeed.toString()}-${gameId}-${ballIndex}`
-  return BigInt("0x" + keccak256Hash(combined))
-}
-
-/**
- * Simple keccak256 hash implementation using crypto
- */
-function keccak256Hash(data: string): string {
-  // In a real implementation, use ethers.js or viem's keccak256
-  // For now, a placeholder that returns a pseudo-random hex string
-  let hash = 0
-  for (let i = 0; i < data.length; i++) {
-    hash = (hash << 5) - hash + data.charCodeAt(i)
-    hash = hash & hash
-  }
-  return Math.abs(hash).toString(16).padStart(64, "0")
+  return BigInt(
+    keccak256(
+      encodeAbiParameters(
+        [{ type: "uint256" }, { type: "uint256" }, { type: "uint256" }],
+        [baseSeed, BigInt(gameId), BigInt(ballIndex)],
+      ),
+    ),
+  )
 }
 
 /**
@@ -127,6 +143,9 @@ export function computeBinomialWeights(rows: number): number[] {
   for (let k = 0; k <= rows; k++) {
     weights[k] = Math.floor((binomial[k] * WEIGHT_SCALE) / total)
   }
+
+  const remainder = WEIGHT_SCALE - weights.reduce((sum, weight) => sum + weight, 0)
+  weights[rows] += remainder
 
   return weights
 }

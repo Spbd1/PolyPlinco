@@ -22,7 +22,7 @@
 - [ ] Stress tests: Simulate 1000 concurrent games
 - [ ] Bankroll stress test: Ensure house never goes bankrupt
 - [ ] Loss-mining math verified: All 9 tiers produce correct token amounts
-- [ ] Post-mining buyback tested: 80/20 split works correctly
+- [ ] Post-mining buyback tested: 70/30 split works correctly
 - [ ] AMM swap tested: 5% fee and burn mechanics work
 - [ ] Slippage protection tested: Frontrunning scenarios
 - [ ] Reentrancy tests: All vulnerable functions checked

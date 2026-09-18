@@ -53,11 +53,11 @@ export default function ProfilePage() {
   }
 
   const maticBalance = balanceData ? Number.parseFloat(formatEther(balanceData.value)) : 0
-  const pplBalanceNum = Number.parseFloat(pplBalance)
+  const pplBalanceNum = Number.parseFloat(typeof pplBalance === "string" ? pplBalance : "0")
 
   // Calculate USD values
   const maticUSD = maticBalance * prices.matic
-  const pplPriceInMatic = calculatePPLPrice(reserveMatic || 0n, reserveToken || 0n)
+  const pplPriceInMatic = calculatePPLPrice(typeof reserveMatic === "bigint" ? reserveMatic : 0n, typeof reserveToken === "bigint" ? reserveToken : 0n)
   const pplPriceInUSD = pplPriceInMatic * prices.matic
   const pplUSD = pplBalanceNum * pplPriceInUSD
   const totalUSD = maticUSD + pplUSD

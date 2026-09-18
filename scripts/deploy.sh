@@ -32,15 +32,14 @@ source .env
 if [ "$NETWORK" = "mainnet" ]; then
     echo -e "${YELLOW}⚠️  MAINNET DEPLOYMENT${NC}"
     echo "This will deploy to Polygon Mainnet (Chain ID: 137)"
-    read -p "Are you sure? (yes/no): " confirm
-    if [ "$confirm" != "yes" ]; then
-        echo "Deployment cancelled"
-        exit 0
+    if [ "${DEPLOY_MAINNET:-}" != "YES_I_UNDERSTAND_POLYGON_MAINNET" ]; then
+        echo -e "${RED}❌ Mainnet deployment disabled without DEPLOY_MAINNET=YES_I_UNDERSTAND_POLYGON_MAINNET${NC}"
+        exit 1
     fi
     
     # Check for mainnet requirements
-    if [ -z "$PRIVATE_KEY" ]; then
-        echo -e "${RED}❌ PRIVATE_KEY not set in .env${NC}"
+    if [ -z "${DEPLOYER_PRIVATE_KEY:-${PRIVATE_KEY:-}}" ]; then
+        echo -e "${RED}❌ DEPLOYER_PRIVATE_KEY not set in .env${NC}"
         exit 1
     fi
     

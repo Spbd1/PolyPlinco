@@ -24,7 +24,7 @@ async function monitorContract() {
   const gameLogs = await client.getLogs({
     address: GAME_CONTRACT,
     event: parseAbiItem(
-      "event GameSettled(uint256 indexed gameId, address indexed player, uint256 totalBet, uint256 totalPayout, uint256 tokensEarned, int256 profit)",
+      "event GameSettled(uint256 indexed gameId, address indexed player, uint256 randomSeed, uint256 totalBet, uint256 totalPayout, int256 profit, uint256 tokensEarned)",
     ),
     fromBlock: "latest",
     toBlock: "latest",

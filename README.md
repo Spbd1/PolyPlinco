@@ -6,16 +6,16 @@ A decentralized Plinko gambling dApp with loss-mining rewards and deflationary t
 
 ### 🎰 Provably Fair Plinko
 - 8-32 rows configuration
-- 1-10,000 balls per day for paid players
+- 1-256 balls per game (bounded by VRF callback gas)
 - 3 risk levels (Low, Medium, High)
 - ~10% house edge (1% dev fee, ~9% to house)
 - Chainlink VRF for randomness
-- **Demo Mode**: Try the game free with up to 10 balls per day
+- **Demo Mode**: Try the game free with up to 100 balls per day
 
 ### 🎮 User Experience
 - **No upfront wallet connection required** - connect inline when you play
-- **Demo mode** - Test the game without connecting wallet (10 balls/day limit)
-- **Minimum bet**: 0.01 POL per ball
+- **Demo mode** - Test the game without connecting wallet (100 balls/day limit)
+- **Minimum bet**: 0.001 POL per ball
 - **Instant results mode** - Toggle animations or skip directly to results
 - **Realistic ball physics** - Smooth bouncing animations between pins
 - **Sound effects** - Audio feedback for drops, wins, and losses
@@ -27,7 +27,7 @@ A decentralized Plinko gambling dApp with loss-mining rewards and deflationary t
 - Fixed supply: 1,000,000 PPL
 - Loss-mining: Earn tokens from net losses
 - 9 tiers: 0.02 → 0.10 MATIC per token
-- Post-mining: 70% buyback to losers, 30% to vault
+- Post-mining: 70% buyback to losers, 30% retained by the house
 - 10k PPL dev allocation (1%)
 
 ### 💱 AMM Swap with Deflation
@@ -49,6 +49,18 @@ A decentralized Plinko gambling dApp with loss-mining rewards and deflationary t
 - Back buttons on all documentation pages
 
 ## Smart Contracts
+
+### Local and testnet operation
+
+Local validation uses `LocalVRFCoordinatorV2PlusMock`, exercising the same request,
+pending-game, authenticated callback, and one-time settlement flow as Chainlink
+VRF v2.5. The local deploy command never contacts Polygon. For Amoy, configure
+the coordinator/subscription variables and deploy with `localMode=false`; see
+[AMOY_READINESS.md](AMOY_READINESS.md).
+
+Contract addresses are public build-time configuration: inject them before
+`pnpm build` or the Docker build. Changing `NEXT_PUBLIC_*` only at container
+runtime does not alter addresses already embedded in the browser bundle.
 
 ### PolyPlinkoGame.sol
 Main game contract with:
@@ -145,7 +157,7 @@ npm run dev
 
 | Feature | Demo Mode | Paid Mode |
 |---------|-----------|-----------|
-| Daily Ball Limit | 10 balls | 10,000 balls |
+| Game Ball Limit | 10 balls | 256 balls |
 | Wallet Required | No | Yes |
 | Real Money | No | Yes (min 0.01 POL/ball) |
 | Token Rewards | No | Yes (PPL on losses) |
@@ -197,7 +209,7 @@ All multipliers are scaled to achieve 90% RTP.
 
 **Post-Mining (after 900k emitted)**:
 - 70% of net losses → automatic PPL buyback sent to player
-- 30% of net losses → vault for system stability and future burns
+- 30% of net losses → retained by the house
 
 ### AMM Formula
 Standard constant-product: `k = reserveMatic * reserveToken`

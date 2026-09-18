@@ -3,6 +3,13 @@ export const POLY_PLINKO_GAME_ADDRESS =
 export const POLY_PLINKO_TOKEN_ADDRESS =
   process.env.NEXT_PUBLIC_PPL_CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000"
 
+export function requireConfiguredAddress(address: string, name: string): `0x${string}` {
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address) || /^0x0{40}$/i.test(address)) {
+    throw new Error(`${name} is not configured with a deployed contract address`)
+  }
+  return address as `0x${string}`
+}
+
 export const POLYGON_CHAIN_ID = 137
 export const POLYGON_AMOY_CHAIN_ID = 80002
 
@@ -15,12 +22,14 @@ export const GAME_ABI = [
   "function getLossMiningTierInfo() view returns (uint256 tier, uint256 pricePerToken, uint256 tokensLeftInTier)",
   "function getSwapQuoteMaticToTokens(uint256 maticIn) view returns (uint256)",
   "function getSwapQuoteTokensToMatic(uint256 tokensIn) view returns (uint256)",
-  "function games(uint256) view returns (address player, uint8 rows, uint16 balls, uint8 risk, uint256 betPerBall, uint256 totalBet, uint256 totalPayout, uint64 requestId, uint256 randomSeed, bool settled, uint40 createdAt)",
+  "function games(uint256) view returns (address player, (uint8 rows, uint16 balls, uint8 risk, uint256 betPerBall) config, uint256 totalBet, uint256 totalPayout, uint64 requestId, uint256 randomSeed, bool settled, uint40 createdAt)",
   "function houseBankroll() view returns (uint256)",
   "function miningEmitted() view returns (uint256)",
   "function reserveMatic() view returns (uint256)",
   "function reserveToken() view returns (uint256)",
   "function totalTokensBurned() view returns (uint256)",
+  "function getAvailableBankroll() view returns (uint256)",
+  "event GameRequested(uint256 indexed gameId, address indexed player, uint64 requestId, uint256 totalBet, uint8 rows, uint16 balls, uint8 risk)",
   "event GameSettled(uint256 indexed gameId, address indexed player, uint256 randomSeed, uint256 totalBet, uint256 totalPayout, int256 profit, uint256 tokensEarned)",
 ] as const
 

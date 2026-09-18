@@ -6,6 +6,8 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./PolyPlinkoToken.sol";
+import {IVRFCoordinatorV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/interfaces/IVRFCoordinatorV2Plus.sol";
+import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 
 /**
  * @title PolyPlinkoGame - Provably Fair Plinko with Loss-Mining & AMM
@@ -15,7 +17,7 @@ import "./PolyPlinkoToken.sol";
  * KEY MECHANICS:
  * 1. Plinko Game: Users bet MATIC, results determined by Chainlink VRF
  * 2. Loss Mining (9 tiers): 0.02 → 0.10 MATIC per token across 900k tokens
- * 3. Post-Mining Buyback: 80% of net loss buys PPL from AMM and sends to player
+ * 3. Post-Mining Buyback: 70% of net loss buys PPL from AMM and sends to player
  * 4. AMM Swap: MATIC ↔ PPL with 5% fee (vault accumulation + token burn)
  * 
  * SECURITY FEATURES:
@@ -37,7 +39,7 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
     
     struct GameConfig {
         uint8 rows;         // [8..32]
-        uint16 balls;       // Updated to support up to 10,000 balls
+        uint16 balls;       // Maximum 256 balls; bounded for VRF callback gas
         RiskLevel risk;
         uint256 betPerBall; // in wei
     }
@@ -59,6 +61,7 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
     
     PolyPlinkoToken public immutable pplToken;
     address public devAddress;
+    uint256 public devFeesAccrued;
     
     // Game state
     uint256 public gameIdCounter;
@@ -66,8 +69,16 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
     mapping(uint64 => uint256) public vrfRequestToGame;
     mapping(address => uint256[]) public playerGames;
     
-    // VRF simulation (in production, use Chainlink VRF v2)
+    // VRF v2.5 subscription configuration. localMode is only for local/CI mocks.
     uint256 private nonce;
+    address public randomnessCoordinator;
+    uint256 public vrfSubscriptionId;
+    bytes32 public vrfKeyHash;
+    uint16 public vrfRequestConfirmations;
+    uint32 public vrfCallbackGasLimit;
+    bool public localMode;
+    mapping(address => uint256) public pendingWithdrawals;
+    uint256 public totalPendingWithdrawals;
     
     // Bankroll & reserves
     uint256 public houseBankroll;
@@ -108,10 +119,10 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
     uint256 public miningEmitted; // Tokens minted via loss-mining
     
     // ============================================
-    // POST-MINING BUYBACK (80% to loser, 20% to house)
+    // POST-MINING BUYBACK (70% to loser, 30% to house)
     // ============================================
     
-    uint256 public constant BUYBACK_PERCENT = 80; // 80% of net loss
+    uint256 public constant BUYBACK_PERCENT = 70; // 70% of net loss
     uint256 public totalBuybackVolume; // Track buyback volume
     
     // ============================================
@@ -223,6 +234,8 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         uint256 maticAmount,
         uint256 tokenAmount
     );
+
+    event DevFeesWithdrawn(address indexed recipient, uint256 amount);
     
     event EmergencyWithdraw(
         address indexed to,
@@ -233,16 +246,31 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
     // CONSTRUCTOR
     // ============================================
     
-    constructor(address _devAddress) Ownable(_devAddress) {
+    constructor(
+        address _devAddress,
+        address _randomnessCoordinator,
+        uint256 _subscriptionId,
+        bytes32 _keyHash,
+        uint16 _requestConfirmations,
+        uint32 _callbackGasLimit,
+        bool _localMode
+    ) Ownable(msg.sender) {
         require(_devAddress != address(0), "Invalid dev address");
+        require(_randomnessCoordinator != address(0), "Invalid VRF coordinator");
         devAddress = _devAddress;
-        
-        // Deploy token
-        pplToken = new PolyPlinkoToken(_devAddress);
-        pplToken.setGameContract(address(this));
-        
-        // Initialize multipliers and weights for all row configurations
-        _initializeMultipliersAndWeights();
+        randomnessCoordinator = _randomnessCoordinator;
+        vrfSubscriptionId = _subscriptionId;
+        vrfKeyHash = _keyHash;
+        vrfRequestConfirmations = _requestConfirmations;
+        vrfCallbackGasLimit = _callbackGasLimit;
+        localMode = _localMode;
+        // The game owns its token so initialization cannot be hijacked by the
+        // developer EOA or another account.
+        pplToken = new PolyPlinkoToken(_devAddress, address(this));
+        pplToken.initializeVaultAllocation();
+
+        // Weights are computed in memory on demand. This keeps deployment gas
+        // bounded and avoids a constructor that cannot fit Polygon limits.
     }
     
     // ============================================
@@ -377,7 +405,7 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         );
         
         require(config.rows >= 8 && config.rows <= 32, "Invalid rows");
-        require(config.balls >= 1 && config.balls <= 10000, "Invalid balls");
+        require(config.balls >= 1 && config.balls <= 256, "Invalid balls");
         require(config.betPerBall >= MIN_BET_PER_BALL, "Bet too small");
         require(config.betPerBall <= MAX_BET_PER_BALL, "Bet too large");
         
@@ -399,24 +427,28 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         
         // Lock bankroll for this game
         lockedBankroll += maxPayout;
+        houseBankroll += netBet;
         playerActiveGames[msg.sender]++;
         playerLastGameTime[msg.sender] = block.timestamp;
         
-        // Request randomness (simulated for demo; use Chainlink VRF in production)
-        uint64 requestId = _requestRandomness();
-        
-        // Create game
+        // Create the pending game before requesting so even a coordinator that
+        // responds in the same transaction cannot target an uninitialized id.
         uint256 gameId = gameIdCounter++;
         games[gameId] = Game({
             player: msg.sender,
             config: config,
             totalBet: totalBet,
             totalPayout: 0,
-            requestId: requestId,
+            requestId: 0,
             randomSeed: 0,
             settled: false,
             createdAt: uint40(block.timestamp)
         });
+
+        uint256 requestId256 = _requestRandomness();
+        require(requestId256 <= type(uint64).max, "Request id overflow");
+        uint64 requestId = uint64(requestId256);
+        games[gameId].requestId = requestId;
         
         vrfRequestToGame[requestId] = gameId;
         playerGames[msg.sender].push(gameId);
@@ -431,12 +463,10 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
             config.risk
         );
         
-        // Transfer dev fee to separate admin address (NOT the contract)
-        (bool devSuccess, ) = payable(devAddress).call{value: devFee}("");
-        require(devSuccess, "Dev fee transfer failed");
+        // Accrue the fee for pull-based withdrawal. A reverting developer
+        // receiver must never be able to block a player's game request.
+        devFeesAccrued += devFee;
         
-        // Auto-fulfill for demo (in production, this happens via VRF callback)
-        _fulfillRandomness(requestId, uint256(keccak256(abi.encode(block.timestamp, block.prevrandao, gameId, msg.sender))));
     }
     
     // ============================================
@@ -447,18 +477,26 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
      * @notice Fulfill randomness and settle game
      * @dev Called by VRF callback (simulated here)
      * @param requestId VRF request ID
-     * @param randomness Random seed
+     * @param randomWords VRF output words
      */
+    function rawFulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) external {
+        require(msg.sender == randomnessCoordinator, "Only coordinator can fulfill");
+        require(randomWords.length > 0, "No random words");
+        require(requestId <= type(uint64).max, "Request id overflow");
+        _fulfillRandomness(uint64(requestId), randomWords[0]);
+    }
+
     function _fulfillRandomness(uint64 requestId, uint256 randomness) private {
         uint256 gameId = vrfRequestToGame[requestId];
         Game storage game = games[gameId];
         
+        require(game.player != address(0), "Unknown request");
         require(!game.settled, "Game already settled");
         
         game.randomSeed = randomness;
         
         // Calculate payout
-        uint256 totalPayout = _calculatePayout(game);
+        uint256 totalPayout = _calculatePayout(gameId);
         game.totalPayout = totalPayout;
         game.settled = true;
         
@@ -470,32 +508,23 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         if (totalPayout > 0) {
             (bool payoutSuccess, ) = payable(game.player).call{value: totalPayout}("");
             if (!payoutSuccess) {
-                // If transfer fails, add to player's withdrawable balance
-                // This prevents locked funds but requires withdrawal function
-                revert("Payout transfer failed");
+                pendingWithdrawals[game.player] += totalPayout;
+                totalPendingWithdrawals += totalPayout;
             }
         }
         
         // Loss mining or post-mining buyback
         uint256 tokensEarned = 0;
-        if (game.totalBet > totalPayout) {
-            uint256 netLoss = game.totalBet - totalPayout;
+        uint256 netBet = game.totalBet - (game.totalBet / 100);
+        if (netBet > totalPayout) {
+            uint256 netLoss = netBet - totalPayout;
             tokensEarned = _handleLossReward(game.player, gameId, netLoss);
         }
         
         // Update bankroll
-        int256 profit = int256(game.totalBet) - int256(totalPayout);
-        if (profit > 0) {
-            houseBankroll += uint256(profit);
-        } else if (profit < 0) {
-            // This should not happen given max payout check, but safety net
-            uint256 loss = uint256(-profit);
-            if (houseBankroll >= loss) {
-                houseBankroll -= loss;
-            } else {
-                houseBankroll = 0;
-            }
-        }
+        int256 profit = int256(netBet) - int256(totalPayout);
+        if (houseBankroll >= totalPayout) houseBankroll -= totalPayout;
+        else revert("Accounting underflow");
         
         emit GameSettled(
             gameId,
@@ -513,8 +542,8 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
      * @param config Game configuration
      * @return maxPayout Maximum possible payout in MATIC
      */
-    function _calculateMaxPayout(GameConfig calldata config) private view returns (uint256) {
-        uint32[] memory multipliers = slotMultipliers[config.rows - 8][config.risk];
+    function _calculateMaxPayout(GameConfig calldata config) private pure returns (uint256) {
+        uint32[] memory multipliers = _computeMultipliers(config.rows, config.risk, _computeBinomialWeights(config.rows));
         
         // Find max multiplier
         uint32 maxMultiplier = 0;
@@ -527,19 +556,25 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         return (config.betPerBall * maxMultiplier * config.balls) / MULTIPLIER_SCALE;
     }
     
-    /**
-     * @notice Request randomness (simulated)
-     * @dev In production, use Chainlink VRF v2
-     */
-    function _requestRandomness() private returns (uint64) {
-        return uint64(++nonce);
+    function _requestRandomness() private returns (uint256) {
+        if (localMode) return ++nonce;
+        return IVRFCoordinatorV2Plus(randomnessCoordinator).requestRandomWords(
+            VRFV2PlusClient.RandomWordsRequest({
+                keyHash: vrfKeyHash,
+                subId: vrfSubscriptionId,
+                requestConfirmations: vrfRequestConfirmations,
+                callbackGasLimit: vrfCallbackGasLimit,
+                numWords: 1,
+                extraArgs: VRFV2PlusClient._argsToBytes(VRFV2PlusClient.ExtraArgsV1({nativePayment: true}))
+            })
+        );
     }
     
     /**
      * @notice Calculate max payout for an existing game
      */
     function _calculateMaxPayoutFromGame(Game storage game) private view returns (uint256) {
-        uint32[] memory multipliers = slotMultipliers[game.config.rows - 8][game.config.risk];
+        uint32[] memory multipliers = _computeMultipliers(game.config.rows, game.config.risk, _computeBinomialWeights(game.config.rows));
         
         uint32 maxMultiplier = 0;
         for (uint8 i = 0; i < multipliers.length; i++) {
@@ -553,17 +588,19 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
     
     /**
      * @notice Calculate total payout for a game
-     * @param game Game struct
+     * @param gameId Stored game id
      * @return totalPayout Total MATIC payout
      */
-    function _calculatePayout(Game storage game) private view returns (uint256) {
+    function _calculatePayout(uint256 gameId) private view returns (uint256) {
+        Game storage game = games[gameId];
         uint256 totalPayout = 0;
         
         uint8 rows = game.config.rows;
-        uint32[] memory multipliers = slotMultipliers[rows - 8][game.config.risk];
+        uint32[] memory weights = _computeBinomialWeights(rows);
+        uint32[] memory multipliers = _computeMultipliers(rows, game.config.risk, weights);
         
         for (uint16 i = 0; i < game.config.balls; i++) {
-            uint8 slot = _getSlotForBall(game.randomSeed, gameIdCounter, i, rows);
+            uint8 slot = _getSlotForBall(game.randomSeed, gameId, i, rows, weights);
             uint256 multiplier = multipliers[slot];
             uint256 payout = (game.config.betPerBall * multiplier) / MULTIPLIER_SCALE;
             totalPayout += payout;
@@ -571,6 +608,7 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         
         return totalPayout;
     }
+
     
     /**
      * @notice Get slot result for a ball
@@ -584,12 +622,12 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         uint256 baseSeed,
         uint256 gameId,
         uint256 ballIndex,
-        uint8 rows
-    ) private view returns (uint8) {
+        uint8 rows,
+        uint32[] memory weights
+    ) private pure returns (uint8) {
         uint256 random = uint256(keccak256(abi.encode(baseSeed, gameId, ballIndex)));
         uint256 u = random % WEIGHT_SCALE;
         
-        uint32[] memory weights = slotWeights[rows - 8];
         uint256 cumulative = 0;
         
         for (uint8 k = 0; k <= rows; k++) {
@@ -618,9 +656,72 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
             // Mining phase: mint new tokens
             return _mintLossMiningTokens(player, gameId, netLoss);
         } else {
-            // Post-mining: buyback 80% of loss and send PPL to player
+            // Post-mining: buyback 70% of loss and send PPL to player
             return _buybackToPlayer(player, gameId, netLoss);
         }
+    }
+
+    /** @notice Seed the independent AMM reserve and house bankroll once. */
+    function seedInitialLiquidityAndBankroll(uint256 tokenAmount) external payable onlyOwner {
+        require(reserveMatic == 0 && reserveToken == 0, "Liquidity already initialized");
+        require(msg.value > 0 && tokenAmount > 0, "Invalid liquidity");
+        require(pplToken.balanceOf(address(this)) >= tokenAmount, "Insufficient token allocation");
+        reserveMatic = msg.value / 2;
+        houseBankroll = msg.value - reserveMatic;
+        reserveToken = tokenAmount;
+        emit LiquidityAdded(reserveMatic, tokenAmount);
+    }
+
+    function getPlayerGames(address player) external view returns (uint256[] memory) { return playerGames[player]; }
+    function getAvailableBankroll() external view returns (uint256) {
+        return houseBankroll > lockedBankroll ? houseBankroll - lockedBankroll : 0;
+    }
+
+    function getLossMiningTierInfo() external view returns (uint256 tier, uint256 pricePerToken, uint256 tokensLeftInTier) {
+        tier = miningEmitted / TOKENS_PER_TIER;
+        if (tier >= NUM_TIERS) return (NUM_TIERS, 0, 0);
+        pricePerToken = PRICE_BASE + tier * PRICE_STEP;
+        tokensLeftInTier = TOKENS_PER_TIER - (miningEmitted % TOKENS_PER_TIER);
+    }
+
+    function getSlotWeight(uint8 rows, uint8 slot) external pure returns (uint32) {
+        require(rows >= 8 && rows <= 32 && slot <= rows, "Invalid slot");
+        return _computeBinomialWeights(rows)[slot];
+    }
+
+    function getSlotMultiplier(uint8 rows, RiskLevel risk, uint8 slot) external pure returns (uint32) {
+        require(rows >= 8 && rows <= 32 && slot <= rows, "Invalid slot");
+        return _computeMultipliers(rows, risk, _computeBinomialWeights(rows))[slot];
+    }
+
+    function getExpectedRtpBps(uint8 rows, RiskLevel risk) external pure returns (uint256) {
+        require(rows >= 8 && rows <= 32, "Invalid rows");
+        uint32[] memory weights = _computeBinomialWeights(rows);
+        uint32[] memory multipliers = _computeMultipliers(rows, risk, weights);
+        uint256 weighted = 0;
+        for (uint8 slot = 0; slot <= rows; slot++) weighted += uint256(weights[slot]) * multipliers[slot];
+        return weighted / WEIGHT_SCALE;
+    }
+
+    function getSwapQuoteMaticToTokens(uint256 maticIn) external view returns (uint256) {
+        require(reserveMatic > 0 && reserveToken > 0, "Liquidity not initialized");
+        uint256 tradeMatic = maticIn - (maticIn * SWAP_FEE_PERCENT / 100);
+        return tradeMatic * reserveToken / (reserveMatic + tradeMatic);
+    }
+
+    function getSwapQuoteTokensToMatic(uint256 tokensIn) external view returns (uint256) {
+        require(reserveMatic > 0 && reserveToken > 0, "Liquidity not initialized");
+        uint256 tradeTokens = tokensIn - (tokensIn * SWAP_FEE_PERCENT / 100);
+        return tradeTokens * reserveMatic / (reserveToken + tradeTokens);
+    }
+
+    function withdrawPendingPayout() external nonReentrant {
+        uint256 amount = pendingWithdrawals[msg.sender];
+        require(amount > 0, "No pending payout");
+        pendingWithdrawals[msg.sender] = 0;
+        totalPendingWithdrawals -= amount;
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
+        require(success, "Transfer failed");
     }
     
     /**
@@ -649,7 +750,9 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
             
             uint256 pricePerToken = PRICE_BASE + (tier * PRICE_STEP); // 0.02 + tier*0.01
             uint256 tokensLeftInTier = TOKENS_PER_TIER - (miningEmitted % TOKENS_PER_TIER);
-            uint256 maxTokensFromLoss = remainingLoss / pricePerToken;
+            // remainingLoss and pricePerToken are native wei; convert the
+            // whole-token result into ERC-20 base units exactly once.
+            uint256 maxTokensFromLoss = (remainingLoss * 1e18) / pricePerToken;
             
             uint256 tokensToMint = maxTokensFromLoss < tokensLeftInTier 
                 ? maxTokensFromLoss 
@@ -657,7 +760,7 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
             
             if (tokensToMint == 0) break;
             
-            uint256 lossConsumed = tokensToMint * pricePerToken;
+            uint256 lossConsumed = (tokensToMint * pricePerToken) / 1e18;
             
             miningEmitted += tokensToMint;
             remainingLoss -= lossConsumed;
@@ -693,7 +796,7 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
             return 0;
         }
         
-        uint256 buybackAmount = (netLoss * 70) / 100; // 70%
+        uint256 buybackAmount = (netLoss * BUYBACK_PERCENT) / 100;
         uint256 houseAmount = netLoss - buybackAmount; // 30% to house
         
         // House portion stays in contract
@@ -711,7 +814,7 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
             reserveToken -= tokensBought;
             
             require(pplToken.balanceOf(address(this)) >= tokensBought, "Insufficient tokens in contract");
-            pplToken.transfer(player, tokensBought);
+            IERC20(address(pplToken)).safeTransfer(player, tokensBought);
             totalBuybackVolume += buybackAmount;
             
             emit BuybackToPlayer(player, gameId, netLoss, buybackAmount, tokensBought);
@@ -744,6 +847,21 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         pplToken.burnFrom(address(this), tokensOut);
         totalTokensBurned += tokensOut;
         
+        emit BuybackAndBurn(maticToSpend, tokensOut);
+    }
+
+    function buybackAndBurn() external onlyOwner nonReentrant {
+        require(vaultMatic > 0, "Vault is empty");
+        require(reserveMatic > 0 && reserveToken > 0, "Liquidity not initialized");
+        uint256 maticToSpend = vaultMatic;
+        vaultMatic = 0;
+        uint256 tokensOut = (maticToSpend * reserveToken) / (reserveMatic + maticToSpend);
+        reserveMatic += maticToSpend;
+        reserveToken -= tokensOut;
+        if (tokensOut > 0) {
+            pplToken.burnFrom(address(this), tokensOut);
+            totalTokensBurned += tokensOut;
+        }
         emit BuybackAndBurn(maticToSpend, tokensOut);
     }
     
@@ -788,7 +906,7 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         reserveMatic += tradeMatic;
         reserveToken -= tokensOut;
         
-        pplToken.transfer(msg.sender, tokensOut);
+        IERC20(address(pplToken)).safeTransfer(msg.sender, tokensOut);
         
         emit SwapMaticForPPL(msg.sender, amountIn, tokensOut, fee);
     }
@@ -803,15 +921,15 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         require(!isEmergencyShutdown, "Emergency shutdown active");
         require(tokenAmountIn > 0, "Must send tokens");
         
-        uint256 estimatedMaticValue = (tokenAmountIn * reserveMatic) / reserveToken;
-        require(estimatedMaticValue <= MAX_SWAP_SIZE, "Swap size too large");
-        
         require(reserveMatic > 0 && reserveToken > 0, "Liquidity not initialized");
         
         require(reserveMatic >= MIN_LIQUIDITY && reserveToken >= MIN_LIQUIDITY, "Insufficient liquidity");
+
+        uint256 estimatedMaticValue = (tokenAmountIn * reserveMatic) / reserveToken;
+        require(estimatedMaticValue <= MAX_SWAP_SIZE, "Swap size too large");
         
         // Transfer tokens from user
-        pplToken.transferFrom(msg.sender, address(this), tokenAmountIn);
+        IERC20(address(pplToken)).safeTransferFrom(msg.sender, address(this), tokenAmountIn);
         
         // 5% fee burned
         uint256 feeBurned = (tokenAmountIn * SWAP_FEE_PERCENT) / 100;
@@ -860,6 +978,16 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         require(_devAddress != address(0), "Invalid address");
         devAddress = _devAddress;
     }
+
+    /** @notice Withdraw accrued developer fees without coupling game requests to receiver behavior. */
+    function withdrawDevFees(uint256 amount) external nonReentrant {
+        require(msg.sender == devAddress, "Only dev can withdraw");
+        require(amount > 0 && amount <= devFeesAccrued, "Invalid dev fee amount");
+        devFeesAccrued -= amount;
+        (bool success, ) = payable(devAddress).call{value: amount}("");
+        require(success, "Dev fee transfer failed");
+        emit DevFeesWithdrawn(devAddress, amount);
+    }
     
     function setMaxBetTotal(uint256 _maxBetTotal) external onlyOwner {
         require(_maxBetTotal >= 100 ether, "Max bet too low");
@@ -883,7 +1011,8 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
     function emergencyWithdraw(uint256 amount) external onlyOwner {
         require(gamePaused, "Must pause game first");
         require(lockedBankroll == 0, "Active games pending");
-        require(amount <= address(this).balance, "Insufficient balance");
+        uint256 protectedFunds = reserveMatic + vaultMatic + totalPendingWithdrawals + devFeesAccrued;
+        require(amount <= address(this).balance - protectedFunds, "Insufficient free balance");
         
         payable(owner()).transfer(amount);
         emit EmergencyWithdraw(owner(), amount);

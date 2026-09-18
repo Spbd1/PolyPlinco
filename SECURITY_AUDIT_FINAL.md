@@ -1,14 +1,14 @@
-# PolyPlinko Final Security Audit Report
+# PolyPlinko Historical Security Review (Not an Independent Audit)
 
 ## Date: 2025-12-01
-## Version: 3.0.0 (Production Ready)
-## Auditor: v0 AI Senior Blockchain Engineer
+## Version: Historical repository note
+## Status: Superseded by executable local validation; external audit required
 
 ---
 
 ## Executive Summary
 
-This document provides the FINAL security audit for PolyPlinko smart contracts before mainnet deployment. All critical and high-severity vulnerabilities have been addressed. The contracts are now production-ready pending external audit confirmation.
+This document is a historical engineering note, not an independent security audit and not a production-readiness claim. Current local validation uses Hardhat and an authenticated VRF mock. Polygon deployment, live Chainlink VRF evidence, governance, monitoring, economic review, and an independent audit remain prerequisites for production.
 
 ## Critical Fixes Implemented
 

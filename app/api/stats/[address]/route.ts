@@ -1,22 +1,23 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createPublicClient, http, parseAbiItem } from "viem"
-import { polygon } from "viem/chains"
+import { serverChain, serverRpcUrl } from "@/lib/server-chain"
+import { requireConfiguredAddress } from "@/lib/contracts"
 
 const GAME_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_GAME_CONTRACT_ADDRESS as `0x${string}`
 
 // Create viem client for server-side blockchain queries
-const publicClient = createPublicClient({
-  chain: polygon,
-  transport: http(process.env.POLYGON_RPC_URL || "https://polygon-rpc.com"),
-})
+const publicClient = serverRpcUrl ? createPublicClient({ chain: serverChain, transport: http(serverRpcUrl) }) : null
 
 // Cache player stats for 30 seconds
 const statsCache = new Map<string, { data: any; timestamp: number }>()
 const CACHE_DURATION = 30 * 1000
 
-export async function GET(request: NextRequest, { params }: { params: { address: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ address: string }> }) {
   try {
-    const address = params.address
+    const { address } = await params
+
+    if (!publicClient) return NextResponse.json({ error: "Blockchain RPC is not configured" }, { status: 503 })
+    const gameAddress = requireConfiguredAddress(GAME_CONTRACT_ADDRESS, "PolyPlinko game")
 
     // Validate address format
     if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
@@ -29,16 +30,24 @@ export async function GET(request: NextRequest, { params }: { params: { address:
       return NextResponse.json({ ...cached.data, cached: true })
     }
 
+    // Bound uncached scans to a recent window unless an operator explicitly
+    // supplies a deployment block. A future indexer can provide full history.
+    const latestBlock = await publicClient.getBlockNumber()
+    const configuredFromBlock = process.env.BLOCK_SCAN_FROM_BLOCK
+    const fromBlock = configuredFromBlock
+      ? BigInt(configuredFromBlock)
+      : latestBlock > 100_000n ? latestBlock - 100_000n : 0n
+
     // Fetch GameSettled events for this player
     const logs = await publicClient.getLogs({
-      address: GAME_CONTRACT_ADDRESS,
+      address: gameAddress,
       event: parseAbiItem(
-        "event GameSettled(uint256 indexed gameId, address indexed player, uint256 totalBet, uint256 totalPayout, uint256 tokensEarned, int256 profit)",
+        "event GameSettled(uint256 indexed gameId, address indexed player, uint256 randomSeed, uint256 totalBet, uint256 totalPayout, int256 profit, uint256 tokensEarned)",
       ),
       args: {
         player: address as `0x${string}`,
       },
-      fromBlock: "earliest",
+      fromBlock,
       toBlock: "latest",
     })
 
@@ -54,7 +63,10 @@ export async function GET(request: NextRequest, { params }: { params: { address:
     let biggestLoss = 0n
 
     logs.forEach((log: any) => {
-      const { totalBet, totalPayout: payout, tokensEarned, profit } = log.args
+      const totalBet = BigInt(log.args.totalBet ?? 0)
+      const payout = BigInt(log.args.totalPayout ?? 0)
+      const tokensEarned = BigInt(log.args.tokensEarned ?? 0)
+      const profit = BigInt(log.args.profit ?? 0)
 
       totalWagered += totalBet
       totalPayout += payout
@@ -92,7 +104,7 @@ export async function GET(request: NextRequest, { params }: { params: { address:
     return NextResponse.json({ ...stats, cached: false })
   } catch (error) {
     console.error("[API] Stats fetch error:", error)
-    return NextResponse.json({ error: "Failed to fetch stats" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch stats" }, { status: 503 })
   }
 }
 

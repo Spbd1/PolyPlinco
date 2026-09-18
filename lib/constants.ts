@@ -4,7 +4,7 @@ export const APP_CONFIG = {
   MIN_ROWS: 8,
   MAX_ROWS: 32,
   MIN_BALLS: 1,
-  MAX_BALLS_PAID: 10000, // Updated max balls from 1000 to 10000 per day for paid players
+  MAX_BALLS_PAID: 256, // Bounded by VRF callback gas; this is per game, not a daily quota
   MAX_BALLS_DEMO: 10,
 
   // Demo mode

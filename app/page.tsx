@@ -22,6 +22,12 @@ export default function Home() {
   })
   const [currentGameResult, setCurrentGameResult] = useState<any>(null)
   const [instantResults, setInstantResults] = useState(false)
+  const [demoMode, setDemoMode] = useState(false)
+  const [demoBallCount, setDemoBallCount] = useState(gameConfig.balls)
+  const [interactiveDropEnabled, setInteractiveDropEnabled] = useState(false)
+  const [interactiveDropRequest, setInteractiveDropRequest] = useState<{ nonce: number; originX: number } | undefined>()
+  const [demoDropOriginX, setDemoDropOriginX] = useState<number | null>(null)
+  const [playNonce, setPlayNonce] = useState(0)
 
   useWatchGameSettled((event) => {
     console.log("[v0] Game settled:", event)
@@ -39,6 +45,19 @@ export default function Home() {
 
   const handleDemoGame = (result: any) => {
     setCurrentGameResult(result)
+  }
+
+  const handleDemoAction = (balls: number, originX?: number) => {
+    setDemoBallCount(balls)
+    setDemoDropOriginX(originX ?? null)
+  }
+
+  const handleDemoModeChange = (enabled: boolean) => {
+    setDemoMode(enabled)
+    if (!enabled) {
+      setInteractiveDropEnabled(false)
+      setDemoDropOriginX(null)
+    }
   }
 
   return (
@@ -75,15 +94,34 @@ export default function Home() {
               <GameControls
                 config={gameConfig}
                 onConfigChange={setGameConfig}
-                onGameStart={() => setCurrentGameResult(null)}
+                onGameStart={() => {
+                  setCurrentGameResult(null)
+                  setPlayNonce((nonce) => nonce + 1)
+                }}
                 onDemoGame={handleDemoGame}
+                onDemoAction={handleDemoAction}
+                interactiveDropRequest={interactiveDropRequest}
+                demoMode={demoMode}
+                onDemoModeChange={handleDemoModeChange}
+                interactiveDropEnabled={interactiveDropEnabled}
+                onInteractiveDropChange={setInteractiveDropEnabled}
                 instantResults={instantResults}
                 onInstantResultsChange={setInstantResults}
               />
             </div>
 
             <div className="flex flex-col gap-6">
-              <PlinkoBoard config={gameConfig} gameResult={currentGameResult} instantResults={instantResults} />
+              <PlinkoBoard
+                config={gameConfig}
+                gameResult={currentGameResult}
+                instantResults={instantResults}
+                playNonce={playNonce}
+                demoMode={demoMode}
+                demoBallCount={demoBallCount}
+                interactiveDropEnabled={interactiveDropEnabled}
+                demoDropOriginX={demoDropOriginX}
+                onInteractiveDrop={(originX) => setInteractiveDropRequest((request) => ({ nonce: (request?.nonce ?? 0) + 1, originX }))}
+              />
               <RecentGames />
             </div>
           </div>

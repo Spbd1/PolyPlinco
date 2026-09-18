@@ -106,7 +106,7 @@ export default function HowToPlayPage() {
               <div>
                 <h3 className="text-xl font-semibold text-purple-400 mb-2">Number of Balls</h3>
                 <p className="text-slate-300">
-                  Drop between 1 and 10,000 balls per day for paid players. Free demo mode allows up to 10 balls per
+                  Drop between 1 and 256 balls per game for paid players. Free demo mode allows up to 10 balls per
                   day. More balls increase excitement but also gas costs.
                 </p>
               </div>
@@ -150,8 +150,8 @@ export default function HowToPlayPage() {
             </h2>
             <div className="space-y-4 text-slate-300">
               <p>
-                Every game uses <span className="text-purple-400 font-semibold">Chainlink VRF v2</span> for verifiable
-                randomness. This means:
+                Paid production games use <span className="text-purple-400 font-semibold">Chainlink VRF v2.5</span> for
+                verifiable randomness; local development uses the authenticated mock coordinator. This means:
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>Results cannot be predicted or manipulated by anyone (including us!)</li>
@@ -216,12 +216,12 @@ export default function HowToPlayPage() {
                 <div className="bg-green-900/20 border border-green-700/50 p-4 rounded-lg">
                   <ul className="list-disc list-inside space-y-2 text-sm">
                     <li>
-                      <span className="text-green-400 font-semibold">80% of your net loss</span> is used to buy PPL
+                      <span className="text-green-400 font-semibold">70% of your net loss</span> is used to buy PPL
                       tokens from the AMM
                     </li>
                     <li>These purchased PPL tokens are sent directly to you as a rebate</li>
                     <li>
-                      <span className="text-slate-400">20% stays with the house</span> for sustainability
+                      <span className="text-slate-400">30% stays with the house</span> for sustainability
                     </li>
                     <li>This creates constant buy pressure on PPL without inflating supply!</li>
                   </ul>
@@ -314,7 +314,7 @@ export default function HowToPlayPage() {
                   <h3 className="text-xl font-semibold text-purple-400 mb-3">Paid Players</h3>
                   <div className="space-y-2 text-sm">
                     <p>
-                      • <span className="font-semibold">10,000 balls per day</span>
+                      • <span className="font-semibold">256 balls per game</span>
                     </p>
                     <p>• Wallet connection required</p>
                     <p>• Real MATIC bets (min 0.01 POL)</p>

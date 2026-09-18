@@ -1,6 +1,6 @@
 const DEMO_STORAGE_KEY = "polyplinko_demo_plays"
 const PAID_STORAGE_KEY = "polyplinko_paid_plays"
-const MAX_DEMO_PLAYS_PER_DAY = 10
+const MAX_DEMO_PLAYS_PER_DAY = 100
 const MAX_PAID_PLAYS_PER_DAY = 10000
 
 interface DemoPlay {

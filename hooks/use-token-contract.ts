@@ -18,9 +18,10 @@ export function useTokenBalance() {
     },
   })
 
+  const balanceValue = typeof balance === "bigint" ? balance : 0n
   return {
-    balance,
-    balanceFormatted: balance ? formatEther(balance) : "0",
+    balance: balanceValue,
+    balanceFormatted: formatEther(balanceValue),
     refetch,
   }
 }
@@ -44,11 +45,12 @@ export function useTokenInfo() {
     functionName: "symbol",
   })
 
+  const totalSupplyValue = typeof totalSupply === "bigint" ? totalSupply : 0n
   return {
-    totalSupply,
-    totalSupplyFormatted: totalSupply ? formatEther(totalSupply) : "0",
-    name,
-    symbol,
+    totalSupply: totalSupplyValue,
+    totalSupplyFormatted: formatEther(totalSupplyValue),
+    name: typeof name === "string" ? name : "",
+    symbol: typeof symbol === "string" ? symbol : "",
   }
 }
 
@@ -91,7 +93,7 @@ export function useTokenApproval(spenderAddress: string) {
   }
 
   return {
-    allowance,
+    allowance: typeof allowance === "bigint" ? allowance : 0n,
     approve,
     isPending,
     isConfirming,

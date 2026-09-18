@@ -1,7 +1,7 @@
 "use client"
 
 import { useWriteContract, useWaitForTransactionReceipt, useReadContract } from "wagmi"
-import { POLY_PLINKO_GAME_ADDRESS, GAME_ABI, type GameConfig } from "@/lib/contracts"
+import { POLY_PLINKO_GAME_ADDRESS, GAME_ABI, requireConfiguredAddress, type GameConfig } from "@/lib/contracts"
 import { useToast } from "@/hooks/use-toast"
 
 export function usePlayPlinko() {
@@ -16,8 +16,10 @@ export function usePlayPlinko() {
     try {
       const totalBet = config.betPerBall * BigInt(config.balls)
 
+      const gameAddress = requireConfiguredAddress(POLY_PLINKO_GAME_ADDRESS, "PolyPlinko game")
+
       writeContract({
-        address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
+        address: gameAddress,
         abi: GAME_ABI,
         functionName: "playPlinko",
         args: [config],
@@ -68,20 +70,19 @@ export function useGameStats() {
     functionName: "lockedBankroll",
   })
 
-  const availableBankroll =
-    houseBankroll && lockedBankroll
-      ? houseBankroll > lockedBankroll
-        ? houseBankroll - lockedBankroll
-        : BigInt(0)
-      : BigInt(0)
+  const houseBankrollValue = typeof houseBankroll === "bigint" ? houseBankroll : 0n
+  const lockedBankrollValue = typeof lockedBankroll === "bigint" ? lockedBankroll : 0n
+  const miningEmittedValue = typeof miningEmitted === "bigint" ? miningEmitted : 0n
+  const tierValues = Array.isArray(tierInfo) ? tierInfo as unknown as readonly [bigint, bigint, bigint] : undefined
+  const availableBankroll = houseBankrollValue > lockedBankrollValue ? houseBankrollValue - lockedBankrollValue : 0n
 
   return {
-    houseBankroll,
+    houseBankroll: houseBankrollValue,
     availableBankroll,
-    lockedBankroll,
-    miningEmitted,
-    currentTier: tierInfo?.[0],
-    pricePerToken: tierInfo?.[1],
-    tokensLeftInTier: tierInfo?.[2],
+    lockedBankroll: lockedBankrollValue,
+    miningEmitted: miningEmittedValue,
+    currentTier: tierValues?.[0],
+    pricePerToken: tierValues?.[1],
+    tokensLeftInTier: tierValues?.[2],
   }
 }

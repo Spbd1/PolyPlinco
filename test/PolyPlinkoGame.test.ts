@@ -9,15 +9,18 @@ describe("PolyPlinkoGame", () => {
   let owner: SignerWithAddress
   let player: SignerWithAddress
   let dev: SignerWithAddress
+  let vrf: any
 
   const MATIC = ethers.parseEther("1")
 
   beforeEach(async () => {
     ;[owner, player, dev] = await ethers.getSigners()
 
-    // Deploy game contract (deploys token internally)
+    const VrfFactory = await ethers.getContractFactory("LocalVRFCoordinatorV2PlusMock")
+    vrf = await VrfFactory.deploy()
+    await vrf.waitForDeployment()
     const GameFactory = await ethers.getContractFactory("PolyPlinkoGame")
-    game = await GameFactory.deploy(dev.address)
+    game = await GameFactory.deploy(dev.address, await vrf.getAddress(), 0, ethers.ZeroHash, 3, 500000, false)
     await game.waitForDeployment()
 
     // Get token address
@@ -28,7 +31,7 @@ describe("PolyPlinkoGame", () => {
     const tokenAmount = ethers.parseEther("90000") // 90k tokens
     await token.connect(owner).approve(await game.getAddress(), tokenAmount)
     await game.seedInitialLiquidityAndBankroll(tokenAmount, {
-      value: ethers.parseEther("1000"),
+      value: ethers.parseEther("100"),
     })
   })
 
@@ -43,17 +46,15 @@ describe("PolyPlinkoGame", () => {
     })
 
     it("Should initialize with correct bankroll", async () => {
-      expect(await game.houseBankroll()).to.equal(ethers.parseEther("500")) // 50% of 1000
+      expect(await game.houseBankroll()).to.equal(ethers.parseEther("50")) // half is the house reserve
     })
   })
 
   describe("Game Play", () => {
-    it("Should accept valid game and take dev fee", async () => {
+    it("Should accrue dev fees without making game creation depend on receiver behavior", async () => {
       const betPerBall = ethers.parseEther("0.01")
       const balls = 10
       const totalBet = betPerBall * BigInt(balls)
-
-      const devBalanceBefore = await ethers.provider.getBalance(dev.address)
 
       await game.connect(player).playPlinko(
         {
@@ -65,10 +66,16 @@ describe("PolyPlinkoGame", () => {
         { value: totalBet },
       )
 
-      const devBalanceAfter = await ethers.provider.getBalance(dev.address)
       const devFee = totalBet / BigInt(100) // 1%
+      expect(await game.devFeesAccrued()).to.equal(devFee)
 
-      expect(devBalanceAfter - devBalanceBefore).to.equal(devFee)
+      await expect(game.connect(dev).withdrawDevFees(devFee)).to.emit(game, "DevFeesWithdrawn")
+      expect(await game.devFeesAccrued()).to.equal(0)
+    })
+
+    it("initializes token ownership to the game contract", async () => {
+      expect(await token.owner()).to.equal(await game.getAddress())
+      expect(await token.gameContract()).to.equal(await game.getAddress())
     })
 
     it("Should reject invalid rows", async () => {
@@ -131,6 +138,7 @@ describe("PolyPlinkoGame", () => {
         },
         { value: totalBet },
       )
+      await vrf.fulfill(1, 1)
 
       const playerBalanceAfter = await token.balanceOf(player.address)
       const tokensMinted = playerBalanceAfter - playerBalanceBefore
@@ -161,6 +169,15 @@ describe("PolyPlinkoGame", () => {
   })
 
   describe("AMM Swap", () => {
+    it("rejects token quotes before touching uninitialized reserves", async () => {
+      const GameFactory = await ethers.getContractFactory("PolyPlinkoGame")
+      const unseeded = await GameFactory.deploy(dev.address, await vrf.getAddress(), 0, ethers.ZeroHash, 3, 500000, false)
+      await unseeded.waitForDeployment()
+
+      await expect(unseeded.getSwapQuoteTokensToMatic(ethers.parseEther("1")))
+        .to.be.revertedWith("Liquidity not initialized")
+    })
+
     it("Should swap MATIC for PPL", async () => {
       const maticIn = ethers.parseEther("1")
       const quote = await game.getSwapQuoteMaticToTokens(maticIn)

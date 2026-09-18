@@ -31,7 +31,9 @@ contract PolyPlinkoToken is ERC20, Ownable {
     event TokensBurned(address indexed from, uint256 amount);
     event TokensMintedFromLoss(address indexed to, uint256 amount, uint256 totalMinted);
     
-    constructor(address _devAddress) ERC20("PolyPlinko Token", "PPL") Ownable(_devAddress) {
+    constructor(address _devAddress, address _gameContract) ERC20("PolyPlinko Token", "PPL") Ownable(_gameContract) {
+        require(_devAddress != address(0) && _gameContract != address(0), "Invalid address");
+        gameContract = _gameContract;
         // Mint dev allocation immediately
         _mint(_devAddress, DEV_ALLOCATION);
     }

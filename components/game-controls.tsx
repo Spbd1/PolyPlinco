@@ -36,8 +36,14 @@ interface GameControlsProps {
   onConfigChange: (config: any) => void
   onGameStart?: () => void
   onDemoGame?: (result: any) => void
+  onDemoAction?: (balls: number, originX?: number) => void
+  interactiveDropRequest?: { nonce: number; originX: number }
+  demoMode?: boolean
+  onDemoModeChange?: (value: boolean) => void
   instantResults?: boolean
   onInstantResultsChange?: (value: boolean) => void
+  interactiveDropEnabled?: boolean
+  onInteractiveDropChange?: (value: boolean) => void
 }
 
 export function GameControls({
@@ -45,8 +51,14 @@ export function GameControls({
   onConfigChange,
   onGameStart,
   onDemoGame,
+  onDemoAction,
+  interactiveDropRequest,
+  demoMode = false,
+  onDemoModeChange,
   instantResults = false,
   onInstantResultsChange,
+  interactiveDropEnabled = false,
+  onInteractiveDropChange,
 }: GameControlsProps) {
   const { isConnected, address } = useAccount()
   const { connect } = useConnect()
@@ -55,10 +67,10 @@ export function GameControls({
   const { availableBankroll } = useGameStats()
 
   const [isConnecting, setIsConnecting] = useState(false)
-  const [demoMode, setDemoMode] = useState(false)
   const [remainingDemoPlays, setRemainingDemoPlays] = useState(10)
-  const [remainingPaidPlays, setRemainingPaidPlays] = useState(10000)
+  const [remainingPaidPlays, setRemainingPaidPlays] = useState(256)
   const [soundEnabled, setSoundEnabled] = useState(true)
+  const [interactiveDropAcknowledged, setInteractiveDropAcknowledged] = useState(false)
 
   useEffect(() => {
     setRemainingDemoPlays(getRemainingDemoPlays())
@@ -71,12 +83,74 @@ export function GameControls({
     soundEffects.setEnabled(soundEnabled)
   }, [soundEnabled])
 
+  useEffect(() => {
+    setInteractiveDropAcknowledged(window.localStorage.getItem("polyplinko:interactive-drop-confirmed") === "true")
+  }, [])
+
   const maxMultiplier = computeMaxMultiplier(config.rows, config.risk)
   const totalBet = demoMode ? 0 : Number.parseFloat(config.betPerBall) * config.balls
   const maxWin = demoMode ? 0 : totalBet * maxMultiplier
 
-  const availableBankrollNumber = availableBankroll ? Number(formatEther(availableBankroll)) : 0
+  const availableBankrollNumber = typeof availableBankroll === "bigint" ? Number(formatEther(availableBankroll)) : 0
   const exceedsBankroll = !demoMode && maxWin > availableBankrollNumber
+
+  const startDemo = (ballCount: number, originX?: number) => {
+    if (!canPlayDemo(ballCount)) {
+      toast({
+        title: "Demo Limit Reached",
+        description: `You have ${remainingDemoPlays} demo balls remaining today.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    addDemoPlay(ballCount)
+    setRemainingDemoPlays(getRemainingDemoPlays())
+    onDemoAction?.(ballCount, originX)
+    onGameStart?.()
+
+    const demoResult = {
+      player: "0xDemo",
+      gameId: `${Date.now()}${Math.floor(Math.random() * 1000)}`,
+      totalBet: "0",
+      totalPayout: "0",
+      profit: "0",
+      tokensEarned: "0",
+      randomSeed: `${Date.now()}${Math.floor(Math.random() * 1000)}`,
+      isDemo: true,
+    }
+
+    window.setTimeout(() => {
+      onDemoGame?.(demoResult)
+      toast({
+        title: ballCount === 1 ? "Ball landed" : "Demo round complete",
+        description: `${getRemainingDemoPlays()} demo balls remaining today.`,
+      })
+    }, 140)
+  }
+
+  useEffect(() => {
+    if (interactiveDropRequest && interactiveDropRequest.nonce > 0) {
+      startDemo(1, interactiveDropRequest.originX)
+    }
+    // The request nonce is intentionally the only trigger. startDemo is a
+    // stable event-like action and including it would retrigger the drop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interactiveDropRequest?.nonce])
+
+  const handleInteractiveDropChange = (checked: boolean) => {
+    if (!checked) {
+      onInteractiveDropChange?.(false)
+      return
+    }
+    if (!interactiveDropAcknowledged) {
+      const confirmed = window.confirm("Interactive Drop is a DEMO-only control. Clicking the board will release free practice balls and cannot affect paid-game outcomes. Enable it?")
+      if (!confirmed) return
+      window.localStorage.setItem("polyplinko:interactive-drop-confirmed", "true")
+      setInteractiveDropAcknowledged(true)
+    }
+    onInteractiveDropChange?.(true)
+  }
 
   const handlePlay = async () => {
     if (!demoMode && exceedsBankroll) {
@@ -89,41 +163,7 @@ export function GameControls({
     }
 
     if (demoMode) {
-      if (!canPlayDemo(config.balls)) {
-        toast({
-          title: "Demo Limit Reached",
-          description: `You can only play ${remainingDemoPlays} more balls today in demo mode. Connect wallet for unlimited play!`,
-          variant: "destructive",
-        })
-        return
-      }
-
-      addDemoPlay(config.balls)
-      setRemainingDemoPlays(getRemainingDemoPlays())
-
-      const multipliers = computeMaxMultiplier(config.rows, config.risk)
-      const totalPayout = multipliers[Math.floor(Math.random() * multipliers.length)] / 10000
-
-      const demoResult = {
-        player: "0xDemo",
-        gameId: Date.now().toString(),
-        totalBet: "0",
-        totalPayout: "0",
-        profit: "0",
-        tokensEarned: "0",
-        randomSeed: Date.now().toString(),
-        isDemo: true,
-      }
-
-      setTimeout(() => {
-        onDemoGame?.(demoResult)
-        onGameStart?.()
-        toast({
-          title: "Demo Game Complete",
-          description: `${remainingDemoPlays - config.balls} balls remaining today. Connect wallet to play for real!`,
-        })
-      }, 100)
-
+      startDemo(config.balls)
       return
     }
 
@@ -181,7 +221,7 @@ export function GameControls({
   }
 
   const getButtonText = () => {
-    if (demoMode) return "Play Demo (Free)"
+    if (demoMode) return "Play Demo Round"
     if (isConnecting) return "Connecting Wallet..."
     if (isPending) return "Sending Transaction..."
     if (isConfirming) return "Waiting for Result..."
@@ -213,7 +253,10 @@ export function GameControls({
             <div className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-purple-400" />
               <div>
-                <Label className="text-purple-300 font-semibold">Instant Results</Label>
+                <div className="flex items-center gap-2">
+                  <Label className="text-purple-300 font-semibold">Instant Results</Label>
+                  <span className="rounded-full bg-purple-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-purple-300">{instantResults ? "On" : "Animated"}</span>
+                </div>
                 <p className="text-xs text-slate-400 mt-1">
                   {instantResults ? "Skip animation, show results immediately" : "Watch balls drop with animation"}
                 </p>
@@ -226,20 +269,38 @@ export function GameControls({
         <Card className="p-4 bg-gradient-to-r from-cyan-900/20 to-blue-900/20 border-cyan-700/50">
           <div className="flex items-center justify-between">
             <div>
-              <Label className="text-cyan-300 font-semibold">Demo Mode (Free)</Label>
+              <div className="flex items-center gap-2">
+                <Label className="text-cyan-300 font-semibold">Demo Mode (Free)</Label>
+                <span className="rounded-full bg-cyan-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300">{demoMode ? "On" : "Off"}</span>
+              </div>
               <p className="text-xs text-slate-400 mt-1">
                 {demoMode ? `${remainingDemoPlays} balls remaining today` : "Test without connecting wallet"}
               </p>
             </div>
-            <Switch checked={demoMode} onCheckedChange={setDemoMode} />
+            <Switch checked={demoMode} onCheckedChange={onDemoModeChange} />
           </div>
         </Card>
+
+        {demoMode && (
+          <Card className="p-4 bg-gradient-to-r from-indigo-900/20 to-cyan-900/20 border-indigo-400/30">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-indigo-200 font-semibold">Interactive Drop</Label>
+                  <span className="rounded-full bg-indigo-300/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-200">{interactiveDropEnabled ? "On" : "Off"}</span>
+                </div>
+                <p className="mt-1 text-xs text-slate-400">Click the upper board to release one free demo ball from that position.</p>
+              </div>
+              <Switch checked={interactiveDropEnabled} onCheckedChange={handleInteractiveDropChange} />
+            </div>
+          </Card>
+        )}
 
         {!demoMode && isConnected && (
           <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/50">
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-400">Daily Balls Remaining:</span>
-              <span className="text-purple-400 font-semibold">{remainingPaidPlays.toLocaleString()} / 10,000</span>
+              <span className="text-purple-400 font-semibold">{remainingPaidPlays.toLocaleString()} / 256</span>
             </div>
           </div>
         )}
@@ -280,7 +341,7 @@ export function GameControls({
                 onClick={() => onConfigChange({ ...config, risk: level })}
                 className={`px-4 py-3 rounded-lg font-semibold transition-all ${
                   config.risk === level
-                    ? `bg-gradient-to-r ${color} text-white shadow-lg`
+                    ? `bg-gradient-to-r ${color} text-white shadow-lg ring-2 ring-white/20`
                     : "bg-slate-800/50 text-slate-400 hover:text-white"
                 }`}
               >
@@ -322,12 +383,12 @@ export function GameControls({
               }
             }}
             min={1}
-            max={demoMode ? Math.min(10, remainingDemoPlays) : Math.min(10000, remainingPaidPlays)}
+            max={demoMode ? Math.min(64, remainingDemoPlays) : Math.min(256, remainingPaidPlays)}
             step={demoMode ? 1 : config.balls < 100 ? 1 : config.balls < 1000 ? 10 : 100}
             className="py-4"
           />
           <p className="text-xs text-slate-500">
-            {demoMode ? "Free demo: up to 10 balls/day" : "Paid: up to 10,000 balls/day"}
+            {demoMode ? "Free demo: up to 64 balls per round · 100 balls/day" : "Paid: up to 256 balls/game"}
           </p>
         </div>
 
@@ -348,7 +409,7 @@ export function GameControls({
               </Card>
             )}
 
-            <div className="space-y-2 p-4 rounded-lg bg-slate-800/30 border border-slate-700/50">
+            <div className="space-y-2 rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 shadow-inner shadow-black/10">
               <div className="flex justify-between">
                 <span className="text-slate-400">Total Bet:</span>
                 <span className="text-white font-semibold">{totalBet.toFixed(4)} POL</span>
@@ -371,6 +432,23 @@ export function GameControls({
               )}
             </div>
           </>
+        )}
+
+        {demoMode && (
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => startDemo(1)}
+              disabled={!canPlayDemo(1)}
+              className="h-11 border-cyan-500/30 bg-cyan-500/5 text-cyan-200 hover:bg-cyan-500/15 hover:text-white"
+            >
+              Drop One Ball
+            </Button>
+            <div className="flex items-center justify-center rounded-lg border border-slate-700/60 bg-slate-900/50 px-2 text-center text-[11px] text-slate-500">
+              {remainingDemoPlays} demo balls left
+            </div>
+          </div>
         )}
 
         <Button

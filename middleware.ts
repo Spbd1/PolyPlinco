@@ -11,7 +11,7 @@ const RATE_LIMIT_WINDOW = 60 * 1000 // 1 minute
 export function middleware(request: NextRequest) {
   // Only apply rate limiting to API routes
   if (request.nextUrl.pathname.startsWith("/api/")) {
-    const ip = request.ip || "unknown"
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
     const now = Date.now()
 
     // Get or initialize rate limit entry

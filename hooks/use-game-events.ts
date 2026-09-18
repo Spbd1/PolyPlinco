@@ -6,6 +6,7 @@ import { parseAbiItem, formatEther } from "viem"
 import { POLY_PLINKO_GAME_ADDRESS } from "@/lib/contracts"
 
 export interface GameEvent {
+  isDemo?: boolean
   gameId: string
   player: string
   randomSeed: string

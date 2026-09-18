@@ -1,302 +1,256 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import type { RiskLevel } from "@/lib/contracts"
-import { computeMultipliers, computeBinomialWeights } from "@/lib/plinko-simulator"
+import { computeBinomialWeights, computeMultipliers, getFinalSlot, simulateBallPath, type BallPathPoint } from "@/lib/plinko-simulator"
 import type { GameEvent } from "@/hooks/use-game-events"
 import { soundEffects } from "@/lib/sound-effects"
-import { Sparkles } from "lucide-react"
+import { Activity, CircleDot, Sparkles, Trophy, Wifi } from "lucide-react"
 
 interface PlinkoBoardProps {
-  config: {
-    rows: number
-    balls: number
-    risk: RiskLevel
-    betPerBall: string
-  }
+  config: { rows: number; balls: number; risk: RiskLevel; betPerBall: string }
   gameResult?: GameEvent | null
   instantResults?: boolean
+  playNonce?: number
+  demoMode?: boolean
+  demoBallCount?: number
+  interactiveDropEnabled?: boolean
+  demoDropOriginX?: number | null
+  onInteractiveDrop?: (originX: number) => void
 }
 
-interface Ball {
-  x: number
-  y: number
-  vx: number
-  vy: number
-  targetX: number
-  currentRow: number
-  slot: number
-  bouncePhase: number
+type BoardPhase = "ready" | "pending" | "animating" | "result"
+type Point = BallPathPoint
+// Keep high-ball games readable: animate a representative sample, while the
+// on-chain result and the landing summary still account for every ball.
+const MAX_VISUAL_BALLS = 24
+const DROP_DURATION_MS = 1850
+const RELEASE_DELAY_MS = 115
+
+function interpolatePath(path: Point[], progress: number): Point {
+  const totalDuration = path.slice(1).reduce((sum, point) => sum + (point.duration ?? 1), 0)
+  let remaining = Math.max(0, Math.min(1, progress)) * totalDuration
+  for (let index = 0; index < path.length - 1; index++) {
+    const from = path[index]
+    const to = path[index + 1]
+    const duration = to.duration ?? 1
+    if (remaining <= duration) {
+      const linear = duration === 0 ? 1 : remaining / duration
+      const falling = to.y > from.y
+      const eased = falling ? linear * linear * (3 - 2 * linear) : 1 - (1 - linear) * (1 - linear)
+      return { x: from.x + (to.x - from.x) * eased, y: from.y + (to.y - from.y) * eased }
+    }
+    remaining -= duration
+  }
+  const last = path[path.length - 1]
+  return { x: last.x, y: last.y }
 }
 
-export function PlinkoBoard({ config, gameResult, instantResults = false }: PlinkoBoardProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const animationFrameRef = useRef<number>()
-  const [balls, setBalls] = useState<Ball[]>([])
-  const [isAnimating, setIsAnimating] = useState(false)
+function multiplierColor(multiplier: number) {
+  if (multiplier >= 2) return "#fbbf24"
+  if (multiplier >= 1) return "#34d399"
+  if (multiplier >= 0.5) return "#a78bfa"
+  return "#fb7185"
+}
+
+export function PlinkoBoard({ config, gameResult, instantResults = false, playNonce = 0, demoMode = false, demoBallCount = config.balls, interactiveDropEnabled = false, demoDropOriginX = null, onInteractiveDrop }: PlinkoBoardProps) {
+  const [phase, setPhase] = useState<BoardPhase>("ready")
+  const [progress, setProgress] = useState(0)
+  const [landedSlots, setLandedSlots] = useState<number[]>([])
   const [showBigWinEffect, setShowBigWinEffect] = useState(false)
+  const animationFrameRef = useRef<number | undefined>(undefined)
+  const lastCollisionRef = useRef(-1)
+  const [hoverX, setHoverX] = useState<number | null>(null)
+
+  const activeBallCount = demoMode ? demoBallCount : config.balls
+  const visibleBallCount = Math.min(activeBallCount, activeBallCount > MAX_VISUAL_BALLS ? MAX_VISUAL_BALLS : activeBallCount)
+  const isSummarized = activeBallCount > visibleBallCount
+  const roundDuration = DROP_DURATION_MS + Math.max(0, visibleBallCount - 1) * RELEASE_DELAY_MS
+  const multipliers = useMemo(() => computeMultipliers(config.rows, config.risk), [config.rows, config.risk])
+  const weights = useMemo(() => computeBinomialWeights(config.rows), [config.rows])
+  const seed = gameResult ? BigInt(gameResult.randomSeed) : BigInt(Math.max(1, playNonce))
+  const gameId = gameResult?.gameId || String(Math.max(1, playNonce))
+
+  const paths = useMemo(
+    () => Array.from({ length: visibleBallCount }, (_, index) => simulateBallPath(seed, gameId, index, config.rows, index === 0 && demoDropOriginX !== null ? demoDropOriginX : 50 + ((index * 13) % 7) - 3)),
+    [config.rows, demoDropOriginX, gameId, seed, visibleBallCount],
+  )
 
   useEffect(() => {
-    if (!gameResult || !canvasRef.current) return
+    if (playNonce === 0) return
+    setPhase("pending")
+    setProgress(0)
+    setLandedSlots([])
+    lastCollisionRef.current = -1
+  }, [playNonce])
 
-    console.log("[v0] Starting ball animation with seed:", gameResult.randomSeed)
-
-    const profit = Number.parseFloat(gameResult.profit)
-    const isBigWin = profit > Number.parseFloat(gameResult.totalBet) * 2
-
-    if (isBigWin) {
-      setShowBigWinEffect(true)
-      soundEffects.playBigWin()
-      setTimeout(() => setShowBigWinEffect(false), 3000)
-    } else if (profit > 0) {
-      soundEffects.playMediumWin()
-    } else {
-      soundEffects.playLoss()
-    }
-
+  useEffect(() => {
+    if (!gameResult) return
+    const resultSlots = Array.from(new Set(Array.from({ length: activeBallCount }, (_, index) => getFinalSlot(seed, gameId, index, config.rows, weights))))
     if (instantResults) {
-      setIsAnimating(false)
-      setBalls([])
+      setProgress(1)
+      setLandedSlots(resultSlots)
+      setPhase("result")
       return
     }
-
-    setIsAnimating(true)
-
-    const newBalls: Ball[] = []
-    const rows = config.rows
-    const canvas = canvasRef.current
-    const width = canvas.width
-    const height = canvas.height
-    const rowHeight = height / (rows + 3)
-    const startY = rowHeight
-
-    const ballsToAnimate = Math.min(config.balls, 100)
-    const weights = computeBinomialWeights(rows)
-
-    for (let i = 0; i < ballsToAnimate; i++) {
-      const random = Math.floor(Math.random() * 1_000_000)
-      let slot = 0
-      let cumulative = 0
-      for (let k = 0; k <= rows; k++) {
-        cumulative += weights[k]
-        if (random < cumulative) {
-          slot = k
-          break
-        }
-      }
-
-      newBalls.push({
-        x: width / 2 + (Math.random() - 0.5) * 20,
-        y: startY - Math.random() * 50,
-        vx: (Math.random() - 0.5) * 1.5,
-        vy: Math.random() * 0.5 + 1.5,
-        targetX: ((slot + 0.5) / (rows + 1)) * width,
-        currentRow: 0,
-        slot,
-        bouncePhase: 0,
-      })
-    }
-
-    setBalls(newBalls)
-
-    setTimeout(() => {
-      setIsAnimating(false)
-      setBalls([])
-    }, 5000)
-  }, [gameResult, config.balls, config.rows, instantResults])
+    setProgress(0)
+    setLandedSlots([])
+    setPhase("animating")
+    lastCollisionRef.current = -1
+  }, [activeBallCount, config.rows, gameId, gameResult, instantResults, seed, weights])
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-    const width = canvas.width
-    const height = canvas.height
-
-    const draw = () => {
-      ctx.clearRect(0, 0, width, height)
-
-      const rows = config.rows
-      const pinRadius = 4
-      const rowHeight = height / (rows + 3)
-      const startY = rowHeight
-
-      for (let row = 0; row <= rows; row++) {
-        const pinsInRow = row + 1
-        const rowWidth = width * 0.7 + (width * 0.25 * row) / rows
-        const startX = (width - rowWidth) / 2
-
-        for (let pin = 0; pin < pinsInRow; pin++) {
-          const x = startX + (rowWidth / (pinsInRow - 1 || 1)) * pin
-          const y = startY + row * rowHeight
-
-          const gradient = ctx.createRadialGradient(x, y, 0, x, y, pinRadius * 3)
-          gradient.addColorStop(0, "rgba(168, 85, 247, 0.6)")
-          gradient.addColorStop(1, "rgba(168, 85, 247, 0)")
-          ctx.fillStyle = gradient
-          ctx.fillRect(x - pinRadius * 3, y - pinRadius * 3, pinRadius * 6, pinRadius * 6)
-
-          ctx.fillStyle = "#a855f7"
-          ctx.beginPath()
-          ctx.arc(x, y, pinRadius, 0, Math.PI * 2)
-          ctx.fill()
-        }
+    if (phase !== "pending" && phase !== "animating") return
+    const startedAt = performance.now()
+    const duration = roundDuration
+    let didFinish = false
+    const tick = (now: number) => {
+      const elapsed = now - startedAt
+      const nextProgress = phase === "pending" ? (elapsed % duration) / duration : Math.min(1, elapsed / duration)
+      setProgress(nextProgress)
+      const collisionStep = Math.floor(((elapsed % DROP_DURATION_MS) / DROP_DURATION_MS) * (config.rows + 1))
+      if (collisionStep !== lastCollisionRef.current) {
+        lastCollisionRef.current = collisionStep
+        soundEffects.playBallDrop()
       }
-
-      if (isAnimating && balls.length > 0) {
-        balls.forEach((ball) => {
-          ctx.fillStyle = "#60a5fa"
-          ctx.beginPath()
-          ctx.arc(ball.x, ball.y, 6, 0, Math.PI * 2)
-          ctx.fill()
-
-          const gradient = ctx.createRadialGradient(ball.x, ball.y, 0, ball.x, ball.y, 12)
-          gradient.addColorStop(0, "rgba(96, 165, 250, 0.8)")
-          gradient.addColorStop(1, "rgba(96, 165, 250, 0)")
-          ctx.fillStyle = gradient
-          ctx.fillRect(ball.x - 12, ball.y - 12, 24, 24)
-        })
-
-        setBalls((prevBalls) =>
-          prevBalls.map((ball) => {
-            const currentRowY = startY + ball.currentRow * rowHeight
-            let newVx = ball.vx
-            let newVy = ball.vy
-            let newBouncePhase = ball.bouncePhase
-            let newCurrentRow = ball.currentRow
-
-            if (ball.y >= currentRowY && ball.currentRow < rows) {
-              newVy = -Math.abs(newVy) * 0.6
-              newBouncePhase = 1
-              newCurrentRow++
-
-              const targetDirection = (ball.targetX - ball.x) / Math.abs(ball.targetX - ball.x || 1)
-              newVx = targetDirection * (Math.random() * 1 + 0.5)
-
-              soundEffects.playBallDrop()
-            }
-
-            if (newBouncePhase > 0) {
-              newBouncePhase -= 0.1
-            }
-
-            newVy = newVy + 0.3
-            newVx = newVx * 0.98
-
-            return {
-              ...ball,
-              x: ball.x + newVx,
-              y: ball.y + newVy,
-              vx: newVx,
-              vy: newVy,
-              currentRow: newCurrentRow,
-              bouncePhase: newBouncePhase,
-            }
-          }),
-        )
+      if (phase === "animating" && nextProgress >= 1) {
+        didFinish = true
+        const resultSlots = Array.from(new Set(Array.from({ length: activeBallCount }, (_, index) => getFinalSlot(seed, gameId, index, config.rows, weights))))
+        setLandedSlots(resultSlots)
+        setPhase("result")
+        const profit = Number.parseFloat(gameResult?.profit || "0")
+        if (profit > Number.parseFloat(gameResult?.totalBet || "0") * 2) {
+          setShowBigWinEffect(true)
+          soundEffects.playBigWin()
+          window.setTimeout(() => setShowBigWinEffect(false), 2800)
+        } else if (profit > 0) soundEffects.playMediumWin()
+        else soundEffects.playLoss()
       }
-
-      const multipliers = computeMultipliers(rows, config.risk)
-      const slotWidth = width / (rows + 1)
-      const slotY = startY + (rows + 1) * rowHeight
-
-      for (let slot = 0; slot <= rows; slot++) {
-        const x = slotWidth * slot + slotWidth / 2
-        const mult = (multipliers[slot] / 10000).toFixed(2)
-
-        ctx.fillStyle = "rgba(30, 41, 59, 0.9)"
-        const boxWidth = Math.min(slotWidth - 4, 50)
-        ctx.fillRect(x - boxWidth / 2, slotY, boxWidth, 32)
-
-        const multValue = Number.parseFloat(mult)
-        let color = "#10b981"
-        if (multValue < 0.5) color = "#ef4444"
-        else if (multValue < 1.0) color = "#f59e0b"
-
-        ctx.fillStyle = color
-        ctx.font = "bold 11px monospace"
-        ctx.textAlign = "center"
-        ctx.fillText(`${mult}x`, x, slotY + 20)
-      }
-
-      animationFrameRef.current = requestAnimationFrame(draw)
+      if (!didFinish) animationFrameRef.current = requestAnimationFrame(tick)
     }
+    animationFrameRef.current = requestAnimationFrame(tick)
+    return () => { if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current) }
+  }, [activeBallCount, config.rows, gameId, gameResult, phase, roundDuration, seed, weights])
 
-    draw()
+  const status = phase === "pending"
+    ? { label: "Waiting for randomness", detail: "Your game is secured on-chain. VRF is preparing the result.", color: "text-amber-300", icon: Wifi }
+    : phase === "animating"
+      ? { label: "Balls are dropping", detail: `${activeBallCount > 1 ? `${activeBallCount} balls` : "Your ball"} are releasing in sequence.`, color: "text-cyan-300", icon: Activity }
+      : phase === "result"
+        ? { label: demoMode ? "Demo result" : "Result received", detail: "Landing confirmed. Your payout is shown below.", color: "text-emerald-300", icon: Trophy }
+        : { label: demoMode ? "Demo board ready" : "Board ready", detail: "Choose your setup, then drop the first ball.", color: "text-slate-300", icon: CircleDot }
+  const StatusIcon = status.icon
+  const bestLandedMultiplier = landedSlots.length > 0 ? Math.max(...landedSlots.map((slot) => multipliers[slot] / 10000)) : 0
 
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current)
-      }
+  const boardPegs = useMemo(() => {
+    const pegs: Array<{ x: number; y: number; row: number }> = []
+    for (let row = 0; row <= config.rows; row++) {
+      const count = row + 1
+      const step = 66 / (config.rows + 1)
+      const startX = 50 - ((count - 1) * step) / 2
+      for (let pin = 0; pin < count; pin++) pegs.push({ x: startX + pin * step, y: 7 + (72 / (config.rows + 1)) * row, row })
     }
-  }, [config, isAnimating, balls])
+    return pegs
+  }, [config.rows])
+
+  const getBallProgress = (index: number) => {
+    const elapsed = progress * roundDuration - index * RELEASE_DELAY_MS
+    if (phase === "pending") {
+      const cycleElapsed = ((elapsed % roundDuration) + roundDuration) % roundDuration
+      return cycleElapsed > DROP_DURATION_MS ? null : cycleElapsed / DROP_DURATION_MS
+    }
+    if (elapsed < 0 || elapsed > DROP_DURATION_MS) return null
+    return elapsed / DROP_DURATION_MS
+  }
+
+  const renderBallPosition = (path: Point[], index: number) => {
+    const ballProgress = getBallProgress(index)
+    return ballProgress === null ? null : interpolatePath(path, ballProgress)
+  }
+
+  const activeBallPositions = paths.map((path, index) => {
+    const point = renderBallPosition(path, index)
+    return point ? { point, index } : null
+  }).filter((ball): ball is { point: Point; index: number } => ball !== null)
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!demoMode || !interactiveDropEnabled) return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    setHoverX(Math.max(18, Math.min(82, ((event.clientX - bounds.left) / bounds.width) * 100)))
+  }
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!demoMode || !interactiveDropEnabled || event.button > 0) return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const relativeY = (event.clientY - bounds.top) / bounds.height
+    if (relativeY > 0.78) return
+    const originX = Math.max(18, Math.min(82, ((event.clientX - bounds.left) / bounds.width) * 100))
+    setHoverX(originX)
+    onInteractiveDrop?.(originX)
+  }
 
   return (
-    <Card className="p-6 bg-slate-900/50 border-slate-800 backdrop-blur-sm relative overflow-hidden">
+    <Card className="relative overflow-hidden border-purple-500/20 bg-slate-950/70 p-4 shadow-2xl shadow-purple-950/30 backdrop-blur-xl sm:p-6">
       {showBigWinEffect && (
-        <div className="absolute inset-0 z-20 pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/20 via-orange-500/20 to-yellow-500/20 animate-pulse" />
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-            <div className="text-6xl font-bold text-yellow-400 animate-bounce drop-shadow-[0_0_30px_rgba(250,204,21,0.8)]">
-              BIG WIN!
-            </div>
-            <div className="flex justify-center gap-4 mt-4">
-              {[...Array(5)].map((_, i) => (
-                <Sparkles
-                  key={i}
-                  className="h-8 w-8 text-yellow-300 animate-spin"
-                  style={{ animationDelay: `${i * 0.1}s` }}
-                />
-              ))}
-            </div>
+        <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-r from-amber-500/10 via-yellow-300/20 to-amber-500/10 animate-pulse">
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
+            <div className="flex items-center gap-2 text-4xl font-black tracking-widest text-amber-300 drop-shadow-[0_0_26px_rgba(251,191,36,0.9)] sm:text-6xl"><Sparkles className="h-8 w-8" /> BIG WIN <Sparkles className="h-8 w-8" /></div>
           </div>
         </div>
       )}
 
-      <div className="relative">
-        <canvas ref={canvasRef} width={800} height={600} className="w-full h-auto rounded-lg bg-slate-950/50" />
-
-        <div className="absolute top-4 left-4 right-4">
-          {!gameResult ? (
-            <div className="bg-slate-900/80 backdrop-blur-sm rounded-lg p-4 border border-slate-700">
-              <p className="text-sm text-slate-300">
-                Configure your game and click <span className="text-purple-400 font-semibold">Play</span> to start
-              </p>
-            </div>
-          ) : (
-            <div className="bg-slate-900/90 backdrop-blur-sm rounded-lg p-4 border border-purple-700/50">
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-400">Total Bet:</span>
-                  <span className="text-white font-semibold">{gameResult.totalBet} POL</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-400">Total Payout:</span>
-                  <span className="text-white font-semibold">{gameResult.totalPayout} POL</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-400">Profit:</span>
-                  <span
-                    className={`font-bold ${Number.parseFloat(gameResult.profit) >= 0 ? "text-green-400" : "text-red-400"}`}
-                  >
-                    {Number.parseFloat(gameResult.profit) >= 0 ? "+" : ""}
-                    {gameResult.profit} POL
-                  </span>
-                </div>
-                {!gameResult.isDemo && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-400">PPL Earned:</span>
-                    <span className="text-purple-400 font-semibold">{gameResult.tokensEarned} PPL</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-slate-800/80 bg-slate-900/80 px-4 py-3 shadow-inner shadow-purple-950/20">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-800/80 ${status.color}`}><StatusIcon className={`h-4 w-4 ${phase === "pending" || phase === "animating" ? "animate-pulse" : ""}`} /></div>
+          <div className="min-w-0"><p className={`text-sm font-bold ${status.color}`}>{status.label}</p><p className="truncate text-xs text-slate-500">{status.detail}</p></div>
         </div>
+        <span className="hidden shrink-0 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-purple-300 sm:inline-flex">{config.rows} rows · {config.risk === 0 ? "low" : config.risk === 1 ? "medium" : "high"} risk</span>
       </div>
+
+      <div
+        className={`relative aspect-[4/3] overflow-hidden rounded-2xl border border-purple-400/20 bg-[radial-gradient(circle_at_50%_15%,rgba(124,58,237,0.18),transparent_42%),linear-gradient(145deg,rgba(15,23,42,0.98),rgba(30,13,55,0.98))] shadow-[inset_0_0_50px_rgba(76,29,149,0.22),0_0_35px_rgba(88,28,135,0.14)] ${demoMode && interactiveDropEnabled ? "cursor-crosshair" : ""}`}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={() => setHoverX(null)}
+        onPointerDown={handlePointerDown}
+        role={demoMode && interactiveDropEnabled ? "button" : undefined}
+        aria-label={demoMode && interactiveDropEnabled ? "Click the upper Plinko board to drop a demo ball" : undefined}
+      >
+        <div className="absolute inset-3 rounded-xl border border-white/5" />
+        {demoMode && interactiveDropEnabled && hoverX !== null && <div className="pointer-events-none absolute inset-y-3 z-10 w-px bg-cyan-300/30 shadow-[0_0_12px_rgba(103,232,249,0.7)]" style={{ left: `${hoverX}%` }}><div className="absolute -left-1.5 top-1 h-3 w-3 rounded-full border border-cyan-200/80 bg-cyan-300/40 shadow-[0_0_14px_rgba(103,232,249,0.9)]" /></div>}
+        <svg viewBox="0 0 100 100" className="relative h-full w-full" role="img" aria-label="Animated Plinko board">
+          <defs>
+            <radialGradient id="peg-glow"><stop offset="0" stopColor="#f5d0fe" /><stop offset="0.28" stopColor="#c084fc" /><stop offset="1" stopColor="#7e22ce" /></radialGradient>
+            <linearGradient id="bucket-fill" x1="0" x2="0" y1="0" y2="1"><stop stopColor="#312e81" stopOpacity="0.9" /><stop offset="1" stopColor="#111827" stopOpacity="0.95" /></linearGradient>
+            <filter id="soft-glow"><feGaussianBlur stdDeviation="1.8" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+          </defs>
+          <path d="M 17 82 L 83 82" stroke="rgba(192,132,252,0.18)" strokeWidth="0.35" />
+          {boardPegs.map((peg, index) => {
+            const isContacting = (phase === "pending" || phase === "animating") && activeBallPositions.some(({ point }) => Math.abs(point.y - peg.y) < 1.25 && Math.abs(point.x - peg.x) < 3.5)
+            return <g key={`${peg.row}-${index}`}><circle cx={peg.x} cy={peg.y} r={isContacting ? "3" : "2.1"} fill={isContacting ? "rgba(103,232,249,0.32)" : "rgba(168,85,247,0.13)"} filter="url(#soft-glow)" /><circle cx={peg.x} cy={peg.y - 0.25} r={isContacting ? "1.15" : "0.9"} fill={isContacting ? "#67e8f9" : "url(#peg-glow)"} /><circle cx={peg.x - 0.28} cy={peg.y - 0.52} r="0.22" fill="#fff" opacity="0.7" /></g>
+          })}
+          {paths.map((path, index) => {
+            if (phase === "ready" || phase === "result" || path.length === 0) return null
+            const point = renderBallPosition(path, index)
+            if (!point) return null
+            const ballProgress = getBallProgress(index) || 0
+            const trail = path.slice(0, Math.max(2, Math.floor(ballProgress * path.length))).map((item) => `${item.x},${item.y}`).join(" ")
+            return <g key={`ball-${index}`}><polyline points={trail} fill="none" stroke="#67e8f9" strokeWidth="0.65" opacity="0.22" strokeLinecap="round" /><circle cx={point.x} cy={point.y} r="2.9" fill="#22d3ee" opacity="0.2" filter="url(#soft-glow)" /><circle cx={point.x} cy={point.y} r="1.2" fill="#e0f2fe" stroke="#67e8f9" strokeWidth="0.55" /></g>
+          })}
+          {multipliers.map((scaledMultiplier, slot) => {
+            const multiplier = scaledMultiplier / 10000
+            const x = 17 + ((slot + 0.5) / (config.rows + 1)) * 66
+            const isLanded = landedSlots.includes(slot)
+            const color = multiplierColor(multiplier)
+            return <g key={`bucket-${slot}`}><rect x={x - 2.45} y="84" width="4.9" height="9" rx="1" fill={isLanded ? color : "url(#bucket-fill)"} fillOpacity={isLanded ? 0.9 : 1} stroke={color} strokeOpacity={isLanded ? 1 : 0.4} strokeWidth={isLanded ? 0.7 : 0.3} />{isLanded && <rect x={x - 2.15} y="84.3" width="4.3" height="8.4" rx="0.8" fill="none" stroke="#fff" strokeOpacity="0.65" strokeWidth="0.25" className="animate-pulse" />}<text x={x} y="89.7" textAnchor="middle" fill={isLanded ? "#fff" : color} fontSize={config.rows > 24 ? "1.8" : "2.2"} fontWeight="700" fontFamily="monospace">{multiplier.toFixed(2)}x</text></g>
+          })}
+        </svg>
+        {phase === "result" && landedSlots.length > 0 && <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200 shadow-lg shadow-emerald-500/20">Landing confirmed</div>}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs"><div className="flex items-center gap-2 text-slate-500"><span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.9)]" />{isSummarized ? `Showing ${visibleBallCount} of ${activeBallCount} balls · remaining outcomes summarized` : `${activeBallCount} ${activeBallCount === 1 ? "ball" : "balls"} in this drop`}</div><span className="rounded-full bg-slate-900/80 px-3 py-1 font-mono text-slate-400">{phase === "pending" ? "VRF PENDING" : phase === "animating" ? "SETTLING" : phase === "result" ? "SETTLED" : "READY"}</span></div>
+
+      {gameResult && phase === "result" && <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-purple-400/20 bg-purple-950/20 p-3 text-sm sm:grid-cols-4"><div><p className="text-[10px] uppercase tracking-wider text-slate-500">{gameResult.isDemo ? "Best landing" : "Payout"}</p><p className="font-bold text-white">{gameResult.isDemo ? `${bestLandedMultiplier.toFixed(2)}x` : `${gameResult.totalPayout} POL`}</p></div><div><p className="text-[10px] uppercase tracking-wider text-slate-500">{gameResult.isDemo ? "Board result" : "Profit"}</p><p className={`font-bold ${gameResult.isDemo ? "text-cyan-300" : Number.parseFloat(gameResult.profit) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{gameResult.isDemo ? "Practice drop" : `${Number.parseFloat(gameResult.profit) >= 0 ? "+" : ""}${gameResult.profit} POL`}</p></div><div><p className="text-[10px] uppercase tracking-wider text-slate-500">Balls</p><p className="font-bold text-white">{activeBallCount}</p></div><div><p className="text-[10px] uppercase tracking-wider text-slate-500">Mode</p><p className="font-bold text-purple-300">{gameResult.isDemo ? "Demo" : "Paid"}</p></div></div>}
     </Card>
   )
 }

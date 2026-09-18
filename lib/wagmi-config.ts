@@ -1,16 +1,14 @@
 import { createConfig, http } from "wagmi"
-import { polygon, polygonAmoy } from "wagmi/chains"
-import { injected, walletConnect } from "wagmi/connectors"
+import { localhost, polygon, polygonAmoy } from "wagmi/chains"
+import { injected } from "wagmi/connectors"
 
 export const wagmiConfig = createConfig({
-  chains: [polygon, polygonAmoy],
+  chains: [localhost, polygon, polygonAmoy],
   connectors: [
     injected(),
-    walletConnect({
-      projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID || "demo",
-    }),
   ],
   transports: {
+    [localhost.id]: http(process.env.NEXT_PUBLIC_RPC_URL || "http://127.0.0.1:8545"),
     [polygon.id]: http(),
     [polygonAmoy.id]: http(),
   },

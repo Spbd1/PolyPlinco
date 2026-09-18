@@ -594,9 +594,9 @@ export default function WhitepaperPage() {
                   </Card>
 
                   <Card className="mt-6 p-6 bg-purple-900/10 border-purple-700/50">
-                    <h4 className="font-semibold text-purple-300 mb-3">Understanding the 30% Vault Allocation</h4>
+                    <h4 className="font-semibold text-purple-300 mb-3">Understanding the 30% House Allocation</h4>
                     <p className="text-sm text-slate-400 mb-3">
-                      The 30% that goes to the vault is <strong>not simply "house profit"</strong>. Instead, it serves
+                      The 30% retained by the house is <strong>not simply "house profit"</strong>. Instead, it serves
                       multiple functions that may indirectly benefit long-term participants:
                     </p>
                     <ul className="list-disc list-inside space-y-2 text-sm text-slate-400 ml-4">
@@ -628,7 +628,7 @@ export default function WhitepaperPage() {
                       ones.
                     </li>
                     <li>
-                      Vault accumulation (30%) that supports long-term system health and can fund additional
+                      House retention (30%) that supports long-term system health and can fund additional
                       deflationary mechanisms.
                     </li>
                     <li>
@@ -676,7 +676,7 @@ export default function WhitepaperPage() {
                         <li>• Supply is hard-capped at 1,000,000 PPL with no possibility of additional minting.</li>
                         <li>
                           • After mining completes, no new tokens are created; instead, tokens are bought back from the
-                          market and redistributed (70%) or used for burns (30% + swap fees).
+                          market and redistributed (70%) or retained by the house (30% + swap fees).
                         </li>
                         <li>
                           • Swap fees (5%) and vault buyback operations continually reduce effective supply, creating
@@ -690,7 +690,7 @@ export default function WhitepaperPage() {
                       <p className="text-sm text-slate-400 mb-3">If the protocol sees sustained usage over years:</p>
                       <ul className="text-sm text-slate-400 space-y-2">
                         <li>• Swap volume grows, generating more burn fees</li>
-                        <li>• Vault reserves accumulate from the 30% allocation</li>
+                        <li>• House reserves retain the 30% post-mining allocation</li>
                         <li>• Buyback operations create continuous demand pressure</li>
                         <li>• Circulating supply may gradually decline due to burns</li>
                       </ul>

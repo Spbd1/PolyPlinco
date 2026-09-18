@@ -1,5 +1,4 @@
 import { ethers } from "hardhat"
-import { parseEther } from "viem"
 
 async function main() {
   const [deployer] = await ethers.getSigners()
@@ -20,13 +19,13 @@ async function main() {
 
   const game = await ethers.getContractAt("PolyPlinkoGame", gameAddress)
 
-  const maticAmount = parseEther(initialMaticLiquidity)
-  const tokenAmount = parseEther(initialTokenLiquidity)
+  const maticAmount = ethers.parseEther(initialMaticLiquidity)
+  const tokenAmount = ethers.parseEther(initialTokenLiquidity)
 
   console.log("\nSending seed transaction...")
   const tx = await game.seedInitialLiquidityAndBankroll(tokenAmount, {
     value: maticAmount,
-    gasLimit: 500000,
+    gasLimit: 2000000,
   })
 
   console.log("Transaction hash:", tx.hash)
