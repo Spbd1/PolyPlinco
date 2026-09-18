@@ -1,13 +1,14 @@
 "use client"
 
-import { useWriteContract, useWaitForTransactionReceipt, useReadContract } from "wagmi"
+import { useWriteContract, useWaitForTransactionReceipt, useReadContract, useChainId } from "wagmi"
 import { formatEther } from "viem"
-import { POLY_PLINKO_GAME_ADDRESS, GAME_ABI } from "@/lib/contracts"
+import { POLY_PLINKO_GAME_ADDRESS, GAME_ABI, isConfiguredAddress, requireConfiguredAddress, requireExpectedChain } from "@/lib/contracts"
 import { useToast } from "@/hooks/use-toast"
 
 export function useSwap() {
   const { toast } = useToast()
-  const { data: hash, writeContract, isPending, error } = useWriteContract()
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract()
+  const chainId = useChainId()
 
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
     hash,
@@ -15,8 +16,10 @@ export function useSwap() {
 
   const swapMaticForTokens = async (maticAmount: bigint, minTokensOut: bigint) => {
     try {
-      writeContract({
-        address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
+      requireExpectedChain(chainId)
+      const gameAddress = requireConfiguredAddress(POLY_PLINKO_GAME_ADDRESS, "PolyPlinko game")
+      await writeContractAsync({
+        address: gameAddress,
         abi: GAME_ABI,
         functionName: "swapExactMaticForTokens",
         args: [minTokensOut],
@@ -34,8 +37,10 @@ export function useSwap() {
 
   const swapTokensForMatic = async (tokenAmount: bigint, minMaticOut: bigint) => {
     try {
-      writeContract({
-        address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
+      requireExpectedChain(chainId)
+      const gameAddress = requireConfiguredAddress(POLY_PLINKO_GAME_ADDRESS, "PolyPlinko game")
+      await writeContractAsync({
+        address: gameAddress,
         abi: GAME_ABI,
         functionName: "swapExactTokensForMatic",
         args: [tokenAmount, minMaticOut],
@@ -66,12 +71,14 @@ export function useSwapQuotes() {
     address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
     abi: GAME_ABI,
     functionName: "reserveMatic",
+    query: { enabled: isConfiguredAddress(POLY_PLINKO_GAME_ADDRESS) },
   })
 
   const { data: reserveToken } = useReadContract({
     address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
     abi: GAME_ABI,
     functionName: "reserveToken",
+    query: { enabled: isConfiguredAddress(POLY_PLINKO_GAME_ADDRESS) },
   })
 
   const reserveMaticValue = typeof reserveMatic === "bigint" ? reserveMatic : 0n
@@ -106,7 +113,8 @@ export function useSwapQuotes() {
 
 export function useBuybackAndBurn() {
   const { toast } = useToast()
-  const { data: hash, writeContract, isPending } = useWriteContract()
+  const { data: hash, writeContractAsync, isPending } = useWriteContract()
+  const chainId = useChainId()
 
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
     hash,
@@ -116,12 +124,15 @@ export function useBuybackAndBurn() {
     address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
     abi: GAME_ABI,
     functionName: "totalTokensBurned",
+    query: { enabled: isConfiguredAddress(POLY_PLINKO_GAME_ADDRESS) },
   })
 
   const buybackAndBurn = async () => {
     try {
-      writeContract({
-        address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
+      requireExpectedChain(chainId)
+      const gameAddress = requireConfiguredAddress(POLY_PLINKO_GAME_ADDRESS, "PolyPlinko game")
+      await writeContractAsync({
+        address: gameAddress,
         abi: GAME_ABI,
         functionName: "buybackAndBurn",
       })

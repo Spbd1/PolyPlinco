@@ -257,6 +257,7 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
     ) Ownable(msg.sender) {
         require(_devAddress != address(0), "Invalid dev address");
         require(_randomnessCoordinator != address(0), "Invalid VRF coordinator");
+        require(!_localMode || block.chainid == 1337 || block.chainid == 31337, "Local mode only on local chain");
         devAddress = _devAddress;
         randomnessCoordinator = _randomnessCoordinator;
         vrfSubscriptionId = _subscriptionId;
@@ -491,6 +492,7 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         Game storage game = games[gameId];
         
         require(game.player != address(0), "Unknown request");
+        require(game.requestId == requestId, "Unknown request");
         require(!game.settled, "Game already settled");
         
         game.randomSeed = randomness;
@@ -797,11 +799,6 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         }
         
         uint256 buybackAmount = (netLoss * BUYBACK_PERCENT) / 100;
-        uint256 houseAmount = netLoss - buybackAmount; // 30% to house
-        
-        // House portion stays in contract
-        houseBankroll += houseAmount;
-        
         // Buyback tokens from AMM (no fee for internal buyback)
         uint256 tokensBought = (buybackAmount * reserveToken) / (reserveMatic + buybackAmount);
         
@@ -810,6 +807,11 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         }
         
         if (tokensBought > 0) {
+            // The net bet is already included in houseBankroll. Move only the
+            // buyback portion into the AMM; the remaining 30% stays in the
+            // house without being added a second time.
+            require(houseBankroll >= buybackAmount, "Insufficient house bankroll");
+            houseBankroll -= buybackAmount;
             reserveMatic += buybackAmount;
             reserveToken -= tokensBought;
             

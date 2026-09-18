@@ -12,7 +12,7 @@ import { useUserStats } from "@/hooks/use-user-stats"
 import { useTokenBalance } from "@/hooks/use-token-contract"
 import { usePriceFeed, formatUSD, calculatePPLPrice } from "@/lib/price-feed"
 import { useReadContract } from "wagmi"
-import { POLY_PLINKO_GAME_ADDRESS, GAME_ABI } from "@/lib/contracts"
+import { POLY_PLINKO_GAME_ADDRESS, GAME_ABI, isConfiguredAddress } from "@/lib/contracts"
 import { formatDistanceToNow } from "date-fns"
 
 export default function ProfilePage() {
@@ -33,12 +33,14 @@ export default function ProfilePage() {
     address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
     abi: GAME_ABI,
     functionName: "reserveMatic",
+    query: { enabled: isConfiguredAddress(POLY_PLINKO_GAME_ADDRESS) },
   })
 
   const { data: reserveToken } = useReadContract({
     address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
     abi: GAME_ABI,
     functionName: "reserveToken",
+    query: { enabled: isConfiguredAddress(POLY_PLINKO_GAME_ADDRESS) },
   })
 
   // Redirect if not connected

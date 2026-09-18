@@ -1,12 +1,13 @@
 "use client"
 
-import { useWriteContract, useWaitForTransactionReceipt, useReadContract } from "wagmi"
-import { POLY_PLINKO_GAME_ADDRESS, GAME_ABI, requireConfiguredAddress, type GameConfig } from "@/lib/contracts"
+import { useWriteContract, useWaitForTransactionReceipt, useReadContract, useChainId } from "wagmi"
+import { POLY_PLINKO_GAME_ADDRESS, GAME_ABI, requireConfiguredAddress, requireExpectedChain, isConfiguredAddress, type GameConfig } from "@/lib/contracts"
 import { useToast } from "@/hooks/use-toast"
 
 export function usePlayPlinko() {
   const { toast } = useToast()
-  const { data: hash, writeContract, isPending, error } = useWriteContract()
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract()
+  const chainId = useChainId()
 
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
     hash,
@@ -17,8 +18,9 @@ export function usePlayPlinko() {
       const totalBet = config.betPerBall * BigInt(config.balls)
 
       const gameAddress = requireConfiguredAddress(POLY_PLINKO_GAME_ADDRESS, "PolyPlinko game")
+      requireExpectedChain(chainId)
 
-      writeContract({
+      await writeContractAsync({
         address: gameAddress,
         abi: GAME_ABI,
         functionName: "playPlinko",
@@ -29,7 +31,7 @@ export function usePlayPlinko() {
       console.error("[v0] Play Plinko error:", err)
       toast({
         title: "Transaction Failed",
-        description: error?.message || "Failed to send transaction",
+        description: err instanceof Error ? err.message : error?.message || "Failed to send transaction",
         variant: "destructive",
       })
     }
@@ -46,28 +48,33 @@ export function usePlayPlinko() {
 }
 
 export function useGameStats() {
+  const enabled = isConfiguredAddress(POLY_PLINKO_GAME_ADDRESS)
   const { data: houseBankroll } = useReadContract({
     address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
     abi: GAME_ABI,
     functionName: "houseBankroll",
+    query: { enabled },
   })
 
   const { data: miningEmitted } = useReadContract({
     address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
     abi: GAME_ABI,
     functionName: "miningEmitted",
+    query: { enabled },
   })
 
   const { data: tierInfo } = useReadContract({
     address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
     abi: GAME_ABI,
     functionName: "getLossMiningTierInfo",
+    query: { enabled },
   })
 
   const { data: lockedBankroll } = useReadContract({
     address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
     abi: GAME_ABI,
     functionName: "lockedBankroll",
+    query: { enabled },
   })
 
   const houseBankrollValue = typeof houseBankroll === "bigint" ? houseBankroll : 0n

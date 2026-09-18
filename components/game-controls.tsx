@@ -277,7 +277,7 @@ export function GameControls({
                 {demoMode ? `${remainingDemoPlays} balls remaining today` : "Test without connecting wallet"}
               </p>
             </div>
-            <Switch checked={demoMode} onCheckedChange={onDemoModeChange} />
+            <Switch data-testid="demo-mode-switch" checked={demoMode} onCheckedChange={onDemoModeChange} />
           </div>
         </Card>
 
@@ -291,7 +291,7 @@ export function GameControls({
                 </div>
                 <p className="mt-1 text-xs text-slate-400">Click the upper board to release one free demo ball from that position.</p>
               </div>
-              <Switch checked={interactiveDropEnabled} onCheckedChange={handleInteractiveDropChange} />
+              <Switch data-testid="interactive-drop-switch" checked={interactiveDropEnabled} onCheckedChange={handleInteractiveDropChange} />
             </div>
           </Card>
         )}
@@ -438,6 +438,7 @@ export function GameControls({
           <div className="grid grid-cols-2 gap-2">
             <Button
               type="button"
+              data-testid="drop-one-ball"
               variant="outline"
               onClick={() => startDemo(1)}
               disabled={!canPlayDemo(1)}
@@ -452,6 +453,7 @@ export function GameControls({
         )}
 
         <Button
+          data-testid={demoMode ? "play-demo-round" : "play-paid-game"}
           onClick={handlePlay}
           disabled={isDisabled}
           className={`w-full h-14 text-lg font-bold transition-all ${

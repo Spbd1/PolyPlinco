@@ -1,8 +1,8 @@
 "use client"
 
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useAccount } from "wagmi"
+import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useAccount, useChainId } from "wagmi"
 import { formatEther } from "viem"
-import { POLY_PLINKO_TOKEN_ADDRESS, TOKEN_ABI } from "@/lib/contracts"
+import { POLY_PLINKO_TOKEN_ADDRESS, TOKEN_ABI, isConfiguredAddress, requireConfiguredAddress, requireExpectedChain } from "@/lib/contracts"
 import { useToast } from "@/hooks/use-toast"
 
 export function useTokenBalance() {
@@ -14,7 +14,7 @@ export function useTokenBalance() {
     functionName: "balanceOf",
     args: address ? [address] : undefined,
     query: {
-      enabled: !!address,
+      enabled: !!address && isConfiguredAddress(POLY_PLINKO_TOKEN_ADDRESS),
     },
   })
 
@@ -31,18 +31,21 @@ export function useTokenInfo() {
     address: POLY_PLINKO_TOKEN_ADDRESS as `0x${string}`,
     abi: TOKEN_ABI,
     functionName: "totalSupply",
+    query: { enabled: isConfiguredAddress(POLY_PLINKO_TOKEN_ADDRESS) },
   })
 
   const { data: name } = useReadContract({
     address: POLY_PLINKO_TOKEN_ADDRESS as `0x${string}`,
     abi: TOKEN_ABI,
     functionName: "name",
+    query: { enabled: isConfiguredAddress(POLY_PLINKO_TOKEN_ADDRESS) },
   })
 
   const { data: symbol } = useReadContract({
     address: POLY_PLINKO_TOKEN_ADDRESS as `0x${string}`,
     abi: TOKEN_ABI,
     functionName: "symbol",
+    query: { enabled: isConfiguredAddress(POLY_PLINKO_TOKEN_ADDRESS) },
   })
 
   const totalSupplyValue = typeof totalSupply === "bigint" ? totalSupply : 0n
@@ -64,11 +67,12 @@ export function useTokenApproval(spenderAddress: string) {
     functionName: "allowance",
     args: address && spenderAddress ? [address, spenderAddress as `0x${string}`] : undefined,
     query: {
-      enabled: !!(address && spenderAddress),
+      enabled: !!(address && spenderAddress) && isConfiguredAddress(POLY_PLINKO_TOKEN_ADDRESS),
     },
   })
 
-  const { data: hash, writeContract, isPending } = useWriteContract()
+  const { data: hash, writeContractAsync, isPending } = useWriteContract()
+  const chainId = useChainId()
 
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
     hash,
@@ -76,8 +80,10 @@ export function useTokenApproval(spenderAddress: string) {
 
   const approve = async (amount: bigint) => {
     try {
-      writeContract({
-        address: POLY_PLINKO_TOKEN_ADDRESS as `0x${string}`,
+      requireExpectedChain(chainId)
+      const tokenAddress = requireConfiguredAddress(POLY_PLINKO_TOKEN_ADDRESS, "PPL token")
+      await writeContractAsync({
+        address: tokenAddress,
         abi: TOKEN_ABI,
         functionName: "approve",
         args: [spenderAddress as `0x${string}`, amount],

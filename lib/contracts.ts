@@ -3,8 +3,12 @@ export const POLY_PLINKO_GAME_ADDRESS =
 export const POLY_PLINKO_TOKEN_ADDRESS =
   process.env.NEXT_PUBLIC_PPL_CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000"
 
+export function isConfiguredAddress(address: string): boolean {
+  return /^0x[a-fA-F0-9]{40}$/.test(address) && !/^0x0{40}$/i.test(address)
+}
+
 export function requireConfiguredAddress(address: string, name: string): `0x${string}` {
-  if (!/^0x[a-fA-F0-9]{40}$/.test(address) || /^0x0{40}$/i.test(address)) {
+  if (!isConfiguredAddress(address)) {
     throw new Error(`${name} is not configured with a deployed contract address`)
   }
   return address as `0x${string}`
@@ -12,6 +16,13 @@ export function requireConfiguredAddress(address: string, name: string): `0x${st
 
 export const POLYGON_CHAIN_ID = 137
 export const POLYGON_AMOY_CHAIN_ID = 80002
+export const EXPECTED_CHAIN_ID = Number(process.env.NEXT_PUBLIC_NETWORK_ID || 1337)
+
+export function requireExpectedChain(chainId: number | undefined): void {
+  if (chainId !== EXPECTED_CHAIN_ID) {
+    throw new Error(`Wrong network. Connect to chain ${EXPECTED_CHAIN_ID} before submitting a transaction.`)
+  }
+}
 
 export const GAME_ABI = [
   "function playPlinko((uint8 rows, uint16 balls, uint8 risk, uint256 betPerBall) config) payable",

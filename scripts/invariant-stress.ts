@@ -1,7 +1,7 @@
 import { ethers } from "hardhat"
 
-const SEED = 0x5eedc0den
-const ACTIONS = 1000
+const SEED = BigInt(process.env.STRESS_SEED || "0x5eedc0de")
+const ACTIONS = Number(process.env.STRESS_ACTIONS || 1000)
 
 function nextRandom(state: bigint): bigint {
   return (state * 1103515245n + 12345n) & 0x7fffffffn
@@ -26,6 +26,7 @@ async function main() {
   let transitions = 0
   let swaps = 0
   let failedReceivers = 0
+  let expectedRejectedGames = 0
 
   const assertInvariants = async () => {
     const balance = await ethers.provider.getBalance(await game.getAddress())
@@ -38,6 +39,19 @@ async function main() {
     if ((await token.totalSupply()) > (await token.MAX_SUPPLY())) throw new Error(`supply cap exceeded at transition ${transitions}`)
   }
 
+  const captureAttemptState = async () => [
+    await ethers.provider.getBalance(await game.getAddress()),
+    await game.gameIdCounter(),
+    await game.houseBankroll(),
+    await game.lockedBankroll(),
+    await game.totalPendingWithdrawals(),
+    await game.devFeesAccrued(),
+    await game.reserveMatic(),
+    await game.reserveToken(),
+    await game.vaultMatic(),
+    await token.totalSupply(),
+  ] as const
+
   for (let i = 0; i < ACTIONS; i++) {
     state = nextRandom(state)
     await ethers.provider.send("evm_increaseTime", [2])
@@ -49,7 +63,21 @@ async function main() {
     state = nextRandom(state)
     const risk = Number(state % 3n)
     const betPerBall = ethers.parseEther(i % 17 === 0 ? "0.01" : "0.001")
-    const tx = await game.connect(player).playPlinko({ rows: row, balls: ballCount, risk, betPerBall }, { value: betPerBall * BigInt(ballCount) })
+    const stateBeforeAttempt = await captureAttemptState()
+    let tx
+    try {
+      tx = await game.connect(player).playPlinko({ rows: row, balls: ballCount, risk, betPerBall }, { value: betPerBall * BigInt(ballCount) })
+    } catch (error) {
+      const message = String(error)
+      if (!message.includes("reverted with reason string 'Insufficient available bankroll'")) throw error
+      expectedRejectedGames++
+      const stateAfterAttempt = await captureAttemptState()
+      if (stateAfterAttempt.some((value, index) => value !== stateBeforeAttempt[index])) {
+        throw new Error(`expected bankroll rejection mutated state at attempted action ${i}`)
+      }
+      await assertInvariants()
+      continue
+    }
     const receipt = await tx.wait()
     const requested = receipt.logs.map((log) => { try { return game.interface.parseLog(log) } catch { return null } }).find((parsed) => parsed?.name === "GameRequested")
     if (!requested) throw new Error(`missing GameRequested at transition ${transitions}`)
@@ -103,7 +131,7 @@ async function main() {
     await (await mock.fulfill(selected.requestId, nextRandom(state))).wait()
   }
   await assertInvariants()
-  console.log(JSON.stringify({ seed: `0x${SEED.toString(16)}`, actions: transitions, sequences: 1, swaps, failedReceivers, failures: 0 }))
+  console.log(JSON.stringify({ seed: `0x${SEED.toString(16)}`, actions: transitions, attemptedActions: ACTIONS, expectedRejectedGames, sequences: 1, swaps, failedReceivers, unexpectedFailures: 0 }))
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1 })

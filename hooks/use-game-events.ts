@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { usePublicClient, useAccount } from "wagmi"
 import { parseAbiItem, formatEther } from "viem"
-import { POLY_PLINKO_GAME_ADDRESS } from "@/lib/contracts"
+import { POLY_PLINKO_GAME_ADDRESS, requireConfiguredAddress } from "@/lib/contracts"
 
 export interface GameEvent {
   isDemo?: boolean
@@ -30,15 +30,19 @@ export function useGameEvents(limit = 10) {
 
       try {
         setIsLoading(true)
+        const gameAddress = requireConfiguredAddress(POLY_PLINKO_GAME_ADDRESS, "PolyPlinko game")
+        const latestBlock = await publicClient.getBlockNumber()
+        const fromBlock = latestBlock > 100_000n ? latestBlock - 100_000n : 0n
 
-        // Fetch GameSettled events
+        // Keep browser history queries bounded. Full history belongs in an
+        // indexer; scanning from genesis on every render amplifies RPC load.
         const logs = await publicClient.getLogs({
-          address: POLY_PLINKO_GAME_ADDRESS as `0x${string}`,
+          address: gameAddress,
           event: parseAbiItem(
             "event GameSettled(uint256 indexed gameId, address indexed player, uint256 randomSeed, uint256 totalBet, uint256 totalPayout, int256 profit, uint256 tokensEarned)",
           ),
-          fromBlock: "earliest",
-          toBlock: "latest",
+          fromBlock,
+          toBlock: latestBlock,
         })
 
         // Filter by current user if address is provided

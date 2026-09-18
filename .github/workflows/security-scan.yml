@@ -20,24 +20,22 @@ jobs:
       with:
         node-version: '18'
     
-    - name: Install dependencies
-      run: npm ci
+    - name: Install dependencies (mandatory)
+      run: corepack enable && corepack prepare pnpm@9.15.0 --activate && pnpm install --frozen-lockfile
     
-    - name: Run npm audit
-      run: npm audit --audit-level=moderate
-      continue-on-error: true
+    - name: Run production dependency audit (mandatory)
+      run: pnpm audit --prod --audit-level=high
     
-    - name: Run Snyk security scan
+    - name: Run Snyk security scan (optional external)
       uses: snyk/actions/node@master
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       continue-on-error: true
     
-    - name: Run ESLint security rules
-      run: npx eslint . --ext .ts,.tsx --max-warnings 0
-      continue-on-error: true
+    - name: Run ESLint security rules (mandatory)
+      run: pnpm exec eslint . --max-warnings 0
     
-    - name: Check for secrets
+    - name: Check for secrets (mandatory)
       uses: trufflesecurity/trufflehog@main
       with:
         path: ./
@@ -55,19 +53,19 @@ jobs:
       with:
         node-version: '18'
     
-    - name: Install dependencies
-      run: npm ci
+    - name: Install dependencies (mandatory)
+      run: corepack enable && corepack prepare pnpm@9.15.0 --activate && pnpm install --frozen-lockfile
     
     - name: Compile contracts
       run: npx hardhat compile
     
-    - name: Run Slither
+    - name: Run Slither (optional external scanner)
       uses: crytic/slither-action@v0.3.0
       with:
         target: 'contracts/'
       continue-on-error: true
     
-    - name: Run Mythril
+    - name: Run Mythril (optional external scanner)
       run: |
         pip3 install mythril
         myth analyze contracts/PolyPlinkoGame.sol --solc-json remappings.json

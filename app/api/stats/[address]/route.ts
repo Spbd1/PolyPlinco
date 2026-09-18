@@ -24,8 +24,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Invalid address format" }, { status: 400 })
     }
 
-    // Check cache
-    const cached = statsCache.get(address)
+    const normalizedAddress = address.toLowerCase()
+
+    // Check cache using a canonical key so casing cannot multiply entries.
+    const cached = statsCache.get(normalizedAddress)
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
       return NextResponse.json({ ...cached.data, cached: true })
     }
@@ -34,9 +36,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // supplies a deployment block. A future indexer can provide full history.
     const latestBlock = await publicClient.getBlockNumber()
     const configuredFromBlock = process.env.BLOCK_SCAN_FROM_BLOCK
-    const fromBlock = configuredFromBlock
-      ? BigInt(configuredFromBlock)
-      : latestBlock > 100_000n ? latestBlock - 100_000n : 0n
+    let fromBlock = latestBlock > 100_000n ? latestBlock - 100_000n : 0n
+    if (configuredFromBlock !== undefined) {
+      if (!/^\d+$/.test(configuredFromBlock)) {
+        return NextResponse.json({ error: "Invalid BLOCK_SCAN_FROM_BLOCK configuration" }, { status: 503 })
+      }
+      fromBlock = BigInt(configuredFromBlock)
+    }
+    if (fromBlock > latestBlock) fromBlock = latestBlock
 
     // Fetch GameSettled events for this player
     const logs = await publicClient.getLogs({
@@ -45,7 +52,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         "event GameSettled(uint256 indexed gameId, address indexed player, uint256 randomSeed, uint256 totalBet, uint256 totalPayout, int256 profit, uint256 tokensEarned)",
       ),
       args: {
-        player: address as `0x${string}`,
+        player: normalizedAddress as `0x${string}`,
       },
       fromBlock,
       toBlock: "latest",
@@ -99,7 +106,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Update cache
-    statsCache.set(address, { data: stats, timestamp: Date.now() })
+    statsCache.set(normalizedAddress, { data: stats, timestamp: Date.now() })
 
     return NextResponse.json({ ...stats, cached: false })
   } catch (error) {

@@ -209,6 +209,10 @@ export function PlinkoBoard({ config, gameResult, instantResults = false, playNo
       </div>
 
       <div
+        data-testid="plinko-board"
+        data-phase={phase}
+        data-demo-origin-x={demoMode && demoDropOriginX !== null ? demoDropOriginX : ""}
+        data-interactive-drop={demoMode && interactiveDropEnabled ? "on" : "off"}
         className={`relative aspect-[4/3] overflow-hidden rounded-2xl border border-purple-400/20 bg-[radial-gradient(circle_at_50%_15%,rgba(124,58,237,0.18),transparent_42%),linear-gradient(145deg,rgba(15,23,42,0.98),rgba(30,13,55,0.98))] shadow-[inset_0_0_50px_rgba(76,29,149,0.22),0_0_35px_rgba(88,28,135,0.14)] ${demoMode && interactiveDropEnabled ? "cursor-crosshair" : ""}`}
         onPointerMove={handlePointerMove}
         onPointerLeave={() => setHoverX(null)}

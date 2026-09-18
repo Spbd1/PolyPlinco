@@ -38,8 +38,49 @@ describe("VRF lifecycle and invariants", function () {
     const requested = await createGame(game, player)
     await expect(game.connect(other).rawFulfillRandomWords(requested.requestId, [1])).to.be.revertedWith("Only coordinator can fulfill")
     await expect(game.connect(other).rawFulfillRandomWords(999, [1])).to.be.revertedWith("Only coordinator can fulfill")
+
+    const coordinator = await mock.getAddress()
+    await ethers.provider.send("hardhat_impersonateAccount", [coordinator])
+    const coordinatorSigner = await ethers.getSigner(coordinator)
+    await ethers.provider.send("hardhat_setBalance", [coordinator, ethers.toBeHex(ethers.parseEther("1"))])
+    await expect(game.connect(coordinatorSigner).rawFulfillRandomWords(999, [1])).to.be.revertedWith("Unknown request")
+    await ethers.provider.send("hardhat_stopImpersonatingAccount", [coordinator])
+
     await mock.fulfill(requested.requestId, 1)
     await expect(mock.fulfill(requested.requestId, 2)).to.be.revertedWith("Already fulfilled")
+  })
+
+  it("keeps post-mining buybacks inside the native accounting envelope", async () => {
+    const { game, player, mock } = await deploy()
+    const miningSupply = await game.MINING_SUPPLY()
+
+    // Test-only state setup: exercise the post-mining branch without
+    // spending thousands of local games to exhaust 900k mining tokens.
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await game.getAddress(),
+      ethers.zeroPadValue("0x14", 32),
+      ethers.zeroPadValue(ethers.toBeHex(miningSupply), 32),
+    ])
+
+    const betPerBall = ethers.parseEther("0.01")
+    const tx = await game.connect(player).playPlinko(
+      { rows: 16, balls: 1, risk: 1, betPerBall },
+      { value: betPerBall },
+    )
+    const receipt = await tx.wait()
+    const requested = receipt!.logs
+      .map((log: any) => { try { return game.interface.parseLog(log) } catch { return null } })
+      .find((parsed: any) => parsed?.name === "GameRequested")
+
+    await mock.fulfill(requested.args.requestId, 0)
+
+    const actual = await ethers.provider.getBalance(await game.getAddress())
+    const protectedNative = (await game.houseBankroll()) +
+      (await game.reserveMatic()) +
+      (await game.vaultMatic()) +
+      (await game.totalPendingWithdrawals()) +
+      (await game.devFeesAccrued())
+    expect(protectedNative).to.equal(actual)
   })
 
   it("preserves supply and bankroll bounds through a pending game", async () => {
