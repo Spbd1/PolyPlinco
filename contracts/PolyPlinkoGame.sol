@@ -17,7 +17,7 @@ import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/V
  * KEY MECHANICS:
  * 1. Plinko Game: Users bet MATIC, results determined by Chainlink VRF
  * 2. Loss Mining (9 tiers): 0.02 → 0.10 MATIC per token across 900k tokens
- * 3. Post-Mining Buyback: 70% of net loss buys PPL from AMM and sends to player
+ * 3. Post-Mining Buyback: 70% of net loss buys PPL from AMM; 30% of purchased PPL burns and 70% goes to player
  * 4. AMM Swap: MATIC ↔ PPL with 5% fee (vault accumulation + token burn)
  * 
  * SECURITY FEATURES:
@@ -119,10 +119,13 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
     uint256 public miningEmitted; // Tokens minted via loss-mining
     
     // ============================================
-    // POST-MINING BUYBACK (70% to loser, 30% to house)
+    // POST-MINING BUYBACK: native split is 70% buyback / 30% retained.
+    // Purchased PPL is separately split 30% burn / 70% player.
     // ============================================
     
     uint256 public constant BUYBACK_PERCENT = 70; // 70% of net loss
+    uint256 public constant POST_MINING_BURN_BPS = 3000; // 30% of purchased PPL
+    uint256 public constant BPS_DENOMINATOR = 10_000;
     uint256 public totalBuybackVolume; // Track buyback volume
     
     // ============================================
@@ -658,7 +661,8 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
             // Mining phase: mint new tokens
             return _mintLossMiningTokens(player, gameId, netLoss);
         } else {
-            // Post-mining: buyback 70% of loss and send PPL to player
+            // Post-mining: buy back 70% of net loss, burn 30% of purchased
+            // PPL, and send the remaining 70% to the player.
             return _buybackToPlayer(player, gameId, netLoss);
         }
     }
@@ -778,8 +782,9 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
     }
     
     /**
-     * @notice Buyback PPL tokens for player using 70% of their net loss
-     * @dev Post-mining mechanism: 70% to player as PPL, 30% stays as house profit
+     * @notice Buyback PPL using 70% of the player's net loss
+     * @dev Native side: 70% buys PPL and 30% remains with the house.
+     *      PPL side: 30% is permanently burned and 70% goes to the player.
      * @param player Player address
      * @param gameId Game ID
      * @param netLoss Net loss in MATIC
@@ -816,7 +821,13 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
             reserveToken -= tokensBought;
             
             require(pplToken.balanceOf(address(this)) >= tokensBought, "Insufficient tokens in contract");
-            IERC20(address(pplToken)).safeTransfer(player, tokensBought);
+            uint256 burnAmount = (tokensBought * POST_MINING_BURN_BPS) / BPS_DENOMINATOR;
+            uint256 playerAmount = tokensBought - burnAmount;
+            if (burnAmount > 0) {
+                pplToken.burnFrom(address(this), burnAmount);
+                totalTokensBurned += burnAmount;
+            }
+            IERC20(address(pplToken)).safeTransfer(player, playerAmount);
             totalBuybackVolume += buybackAmount;
             
             emit BuybackToPlayer(player, gameId, netLoss, buybackAmount, tokensBought);

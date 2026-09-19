@@ -182,8 +182,8 @@ export default function HowToPlayPage() {
               <div>
                 <h3 className="text-xl font-semibold text-purple-400 mb-3">Loss-Mining Rewards (9 Tiers)</h3>
                 <p className="mb-3">
-                  When you lose a game, you automatically earn PPL tokens based on your net loss! This creates a
-                  player-first economy where losing isn't so bad.
+                  When you lose a game, you may receive PPL based on your net loss. PPL rewards do not reimburse the
+                  gambling loss, and token value can change.
                 </p>
                 <div className="bg-slate-800/50 p-4 rounded-lg">
                   <p className="font-semibold text-white mb-2">Mining Phase (900,000 PPL):</p>
@@ -219,11 +219,15 @@ export default function HowToPlayPage() {
                       <span className="text-green-400 font-semibold">70% of your net loss</span> is used to buy PPL
                       tokens from the AMM
                     </li>
-                    <li>These purchased PPL tokens are sent directly to you as a rebate</li>
                     <li>
-                      <span className="text-slate-400">30% stays with the house</span> for sustainability
+                      <span className="text-purple-300 font-semibold">30% of the purchased PPL</span> is permanently
+                      burned
                     </li>
-                    <li>This creates constant buy pressure on PPL without inflating supply!</li>
+                    <li>
+                      <span className="text-green-300 font-semibold">70% of the purchased PPL</span> is sent to you
+                    </li>
+                    <li><span className="text-slate-400">30% of your net loss</span> remains with the protocol</li>
+                    <li>These are two separate splits: native funds and purchased PPL.</li>
                   </ul>
                 </div>
               </div>
@@ -380,9 +384,10 @@ export default function HowToPlayPage() {
                 </p>
               </div>
               <div className="p-4 bg-green-900/20 border border-green-700/50 rounded-lg">
-                <h4 className="font-semibold text-green-400 mb-1">Loss-Mining is Valuable</h4>
+                <h4 className="font-semibold text-green-400 mb-1">Loss-Mining Reward Disclosure</h4>
                 <p className="text-sm">
-                  Early players get better token rates. Your losses turn into PPL which has real value in the swap!
+                  Early players get better token rates. PPL rewards do not make losing profitable, reimburse losses,
+                  or guarantee future value.
                 </p>
               </div>
               <div className="p-4 bg-purple-900/20 border border-purple-700/50 rounded-lg">

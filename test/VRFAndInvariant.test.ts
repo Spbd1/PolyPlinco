@@ -52,6 +52,7 @@ describe("VRF lifecycle and invariants", function () {
 
   it("keeps post-mining buybacks inside the native accounting envelope", async () => {
     const { game, player, mock } = await deploy()
+    const token = await ethers.getContractAt("PolyPlinkoToken", await game.pplToken())
     const miningSupply = await game.MINING_SUPPLY()
 
     // Test-only state setup: exercise the post-mining branch without
@@ -63,6 +64,12 @@ describe("VRF lifecycle and invariants", function () {
     ])
 
     const betPerBall = ethers.parseEther("0.01")
+    const beforeSupply = await token.totalSupply()
+    const beforeAmmPpl = await game.reserveToken()
+    const beforeAmmNative = await game.reserveMatic()
+    const beforePlayerPpl = await token.balanceOf(player.address)
+    const beforeGamePpl = await token.balanceOf(await game.getAddress())
+    const beforeHouse = await game.houseBankroll()
     const tx = await game.connect(player).playPlinko(
       { rows: 16, balls: 1, risk: 1, betPerBall },
       { value: betPerBall },
@@ -72,7 +79,37 @@ describe("VRF lifecycle and invariants", function () {
       .map((log: any) => { try { return game.interface.parseLog(log) } catch { return null } })
       .find((parsed: any) => parsed?.name === "GameRequested")
 
-    await mock.fulfill(requested.args.requestId, 0)
+    const fulfillment = await (await mock.fulfill(requested.args.requestId, 1)).wait()
+
+    const parsedEvents = fulfillment.logs
+      .map((log: any) => {
+        try { return game.interface.parseLog(log) } catch { return null }
+      })
+      .filter(Boolean)
+    const buyback = parsedEvents.find((event: any) => event?.name === "BuybackToPlayer")
+    expect(buyback).to.not.equal(undefined)
+    const purchasedPpl = buyback.args.tokensBought
+    const burnedPpl = (purchasedPpl * 3000n) / 10000n
+    const playerPpl = purchasedPpl - burnedPpl
+
+    const afterSupply = await token.totalSupply()
+    const afterAmmPpl = await game.reserveToken()
+    const afterAmmNative = await game.reserveMatic()
+    const afterPlayerPpl = await token.balanceOf(player.address)
+    const afterGamePpl = await token.balanceOf(await game.getAddress())
+    const afterHouse = await game.houseBankroll()
+
+    expect(afterSupply).to.equal(beforeSupply - burnedPpl)
+    expect(afterPlayerPpl - beforePlayerPpl).to.equal(playerPpl)
+    expect(beforeAmmPpl - afterAmmPpl).to.equal(purchasedPpl)
+    expect(beforeGamePpl - afterGamePpl).to.equal(purchasedPpl)
+    expect(burnedPpl + playerPpl).to.equal(purchasedPpl)
+    expect(await game.totalTokensBurned()).to.equal(burnedPpl)
+
+    const netLoss = buyback.args.netLoss
+    const buybackNative = buyback.args.maticUsed
+    expect(afterAmmNative - beforeAmmNative).to.equal(buybackNative)
+    expect(afterHouse - beforeHouse).to.equal(netLoss - buybackNative)
 
     const actual = await ethers.provider.getBalance(await game.getAddress())
     const protectedNative = (await game.houseBankroll()) +
@@ -81,6 +118,54 @@ describe("VRF lifecycle and invariants", function () {
       (await game.totalPendingWithdrawals()) +
       (await game.devFeesAccrued())
     expect(protectedNative).to.equal(actual)
+  })
+
+  it("keeps repeated post-mining burns exact and never reopens mining", async () => {
+    const { game, player, mock } = await deploy()
+    const token = await ethers.getContractAt("PolyPlinkoToken", await game.pplToken())
+    const miningSupply = await game.MINING_SUPPLY()
+    await ethers.provider.send("hardhat_setStorageAt", [
+      await game.getAddress(),
+      ethers.zeroPadValue("0x14", 32),
+      ethers.zeroPadValue(ethers.toBeHex(miningSupply), 32),
+    ])
+
+    let expectedBurned = 0n
+    let observedBuybacks = 0
+    const beforeSupply = await token.totalSupply()
+    for (let i = 0; i < 4; i++) {
+      await ethers.provider.send("evm_increaseTime", [2])
+      await ethers.provider.send("evm_mine", [])
+      const requested = await createGame(game, player)
+      const receipt = await (await mock.fulfill(requested.requestId, 1)).wait()
+      const events = receipt.logs
+        .map((log: any) => {
+          try { return game.interface.parseLog(log) } catch { return null }
+        })
+        .filter(Boolean)
+      const buyback = events.find((event: any) => event?.name === "BuybackToPlayer")
+      if (buyback) {
+        observedBuybacks++
+        expectedBurned += (buyback.args.tokensBought * 3000n) / 10000n
+      }
+    }
+
+    expect(observedBuybacks).to.be.greaterThan(0)
+    expect(await game.miningEmitted()).to.equal(miningSupply)
+    expect(await token.totalSupply()).to.equal(beforeSupply - expectedBurned)
+    expect(await game.totalTokensBurned()).to.equal(expectedBurned)
+  })
+
+  it("uses a fixed 30% PPL burn with Solidity rounding and no mutable setter", async () => {
+    const { game } = await deploy()
+    expect(await game.POST_MINING_BURN_BPS()).to.equal(3000n)
+    expect(await game.BPS_DENOMINATOR()).to.equal(10000n)
+    for (const purchased of [0n, 1n, 2n, 3n, 9n, 10n, 11n, ethers.parseEther("1"), ethers.parseEther("1000000")]) {
+      const burned = (purchased * 3000n) / 10000n
+      const playerAmount = purchased - burned
+      expect(burned + playerAmount).to.equal(purchased)
+      expect(burned).to.be.lte(purchased)
+    }
   })
 
   it("preserves supply and bankroll bounds through a pending game", async () => {

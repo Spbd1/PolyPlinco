@@ -178,7 +178,7 @@ export function TokenPanel() {
           ) : (
             <div className="p-4 rounded-lg bg-gradient-to-r from-green-900/30 to-blue-900/30 border border-green-700/50">
               <p className="text-green-300 text-sm mb-2">Mining Complete - Buyback Active</p>
-              <p className="text-white text-sm">All 900k mining tokens distributed. Now using the 70% buyback mechanism.</p>
+              <p className="text-white text-sm">All 900k mining tokens distributed. 70% of applicable net loss buys PPL; 30% of purchased PPL burns and 70% goes to the player.</p>
             </div>
           )}
 

@@ -571,7 +571,7 @@ export default function WhitepaperPage() {
                   </ul>
 
                   <Card className="mt-6 p-6 bg-cyan-900/10 border-cyan-700/50">
-                    <h4 className="font-semibold text-cyan-300 mb-3">70/30 Split for Net Losses</h4>
+                    <h4 className="font-semibold text-cyan-300 mb-3">Separate Native and PPL Post-Mining Splits</h4>
                     <p className="text-sm text-slate-400 mb-4">
                       For each game where netLoss {">"} 0 after mining is complete:
                     </p>
@@ -579,15 +579,15 @@ export default function WhitepaperPage() {
                       <div>
                         <div className="text-3xl font-bold text-cyan-300 mb-1">70%</div>
                         <p className="text-sm text-slate-400">
-                          Routed to <strong>automatic buyback</strong>: MATIC is used to purchase PPL from the swap
-                          pool. The purchased PPL is sent directly to the losing player as a rebate.
+                          Routed to <strong>automatic buyback</strong>: native funds purchase PPL from the swap pool.
+                          Of the purchased PPL, 30% is permanently burned and 70% is sent to the losing player.
                         </p>
                       </div>
                       <div>
                         <div className="text-3xl font-bold text-slate-300 mb-1">30%</div>
                         <p className="text-sm text-slate-400">
-                          Routed to the <strong>vault / protocol balance</strong> for long-term system stability, future
-                          buyback operations, and additional burn mechanisms.
+                          Retained by the <strong>house / protocol balance</strong> for system stability. This is a
+                          native-asset split and is separate from the 30% PPL burn / 70% player split.
                         </p>
                       </div>
                     </div>
