@@ -1,0 +1,68 @@
+services:
+  polyplinko-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_ENV: private-local
+        NEXT_PUBLIC_GAME_CONTRACT_ADDRESS: ${NEXT_PUBLIC_GAME_CONTRACT_ADDRESS:?set local game address}
+        NEXT_PUBLIC_PPL_CONTRACT_ADDRESS: ${NEXT_PUBLIC_PPL_CONTRACT_ADDRESS:?set local token address}
+        NEXT_PUBLIC_NETWORK_ID: ${NEXT_PUBLIC_NETWORK_ID:?set local chain id}
+        NEXT_PUBLIC_RPC_URL: ${NEXT_PUBLIC_RPC_URL:?set local RPC URL}
+    environment:
+      NODE_ENV: production
+      APP_ENV: private-local
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_GAME_CONTRACT_ADDRESS: ${NEXT_PUBLIC_GAME_CONTRACT_ADDRESS:?set local game address}
+      NEXT_PUBLIC_PPL_CONTRACT_ADDRESS: ${NEXT_PUBLIC_PPL_CONTRACT_ADDRESS:?set local token address}
+      NEXT_PUBLIC_NETWORK_ID: ${NEXT_PUBLIC_NETWORK_ID:?set local chain id}
+      NEXT_PUBLIC_RPC_URL: ${NEXT_PUBLIC_RPC_URL:?set local RPC URL}
+    expose:
+      - "3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/api/health?ready=1').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [private]
+
+  private-proxy:
+    image: nginx:1.27-alpine
+    user: "101:101"
+    entrypoint: [nginx, -g, daemon off;]
+    ports:
+      - "127.0.0.1:8088:8080"
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:rw,noexec,nosuid,size=16m,uid=101,gid=101,mode=700
+      - /var/run:rw,noexec,nosuid,size=1m,uid=101,gid=101,mode=700
+      - /tmp:rw,noexec,nosuid,size=16m,uid=101,gid=101,mode=700
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 128
+    restart: unless-stopped
+    depends_on:
+      polyplinko-web:
+        condition: service_healthy
+    volumes:
+      - ./nginx.private.conf:/etc/nginx/nginx.conf:ro
+    networks: [private]
+
+networks:
+  private:
+    driver: bridge

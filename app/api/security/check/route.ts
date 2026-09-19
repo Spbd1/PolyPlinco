@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const address = searchParams.get("address")
 
-  if (!address || !isValidEthereumAddress(address)) {
+  if (!address || !isValidEthereumAddress(address) || /^0x0{40}$/i.test(address)) {
     return NextResponse.json({ error: "Invalid address" }, { status: 400 })
   }
 
