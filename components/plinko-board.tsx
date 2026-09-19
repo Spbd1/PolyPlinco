@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import type { RiskLevel } from "@/lib/contracts"
-import { computeBinomialWeights, computeMultipliers, getFinalSlot, simulateBallPath, type BallPathPoint } from "@/lib/plinko-simulator"
+import { computeBinomialWeights, computeMultipliers, getFinalSlot, getPathDuration, getPathPosition, simulateBallPath, type BallPathPoint } from "@/lib/plinko-simulator"
 import type { GameEvent } from "@/hooks/use-game-events"
 import { soundEffects } from "@/lib/sound-effects"
 import { Activity, CircleDot, Sparkles, Trophy, Wifi } from "lucide-react"
@@ -25,26 +25,13 @@ type Point = BallPathPoint
 // Keep high-ball games readable: animate a representative sample, while the
 // on-chain result and the landing summary still account for every ball.
 const MAX_VISUAL_BALLS = 24
-const DROP_DURATION_MS = 1850
-const RELEASE_DELAY_MS = 115
+const RELEASE_DELAY_MS = 105
 
-function interpolatePath(path: Point[], progress: number): Point {
-  const totalDuration = path.slice(1).reduce((sum, point) => sum + (point.duration ?? 1), 0)
-  let remaining = Math.max(0, Math.min(1, progress)) * totalDuration
-  for (let index = 0; index < path.length - 1; index++) {
-    const from = path[index]
-    const to = path[index + 1]
-    const duration = to.duration ?? 1
-    if (remaining <= duration) {
-      const linear = duration === 0 ? 1 : remaining / duration
-      const falling = to.y > from.y
-      const eased = falling ? linear * linear * (3 - 2 * linear) : 1 - (1 - linear) * (1 - linear)
-      return { x: from.x + (to.x - from.x) * eased, y: from.y + (to.y - from.y) * eased }
-    }
-    remaining -= duration
-  }
-  const last = path[path.length - 1]
-  return { x: last.x, y: last.y }
+function pathProgressAtPoint(path: Point[], pointIndex: number): number {
+  const total = getPathDuration(path)
+  if (total <= 0) return 1
+  const elapsed = path.slice(1, pointIndex + 1).reduce((sum, point) => sum + (point.duration ?? 0), 0)
+  return elapsed / total
 }
 
 function multiplierColor(multiplier: number) {
@@ -56,17 +43,19 @@ function multiplierColor(multiplier: number) {
 
 export function PlinkoBoard({ config, gameResult, instantResults = false, playNonce = 0, demoMode = false, demoBallCount = config.balls, interactiveDropEnabled = false, demoDropOriginX = null, onInteractiveDrop }: PlinkoBoardProps) {
   const [phase, setPhase] = useState<BoardPhase>("ready")
-  const [progress, setProgress] = useState(0)
   const [landedSlots, setLandedSlots] = useState<number[]>([])
   const [showBigWinEffect, setShowBigWinEffect] = useState(false)
+  const [reducedMotion, setReducedMotion] = useState(false)
   const animationFrameRef = useRef<number | undefined>(undefined)
-  const lastCollisionRef = useRef(-1)
+  const playedContactsRef = useRef<Set<string>>(new Set())
+  const landingTimeoutRef = useRef<number | undefined>(undefined)
+  const ballLayerRef = useRef<SVGGElement | null>(null)
+  const activePegRef = useRef<SVGGElement | null>(null)
   const [hoverX, setHoverX] = useState<number | null>(null)
 
   const activeBallCount = demoMode ? demoBallCount : config.balls
   const visibleBallCount = Math.min(activeBallCount, activeBallCount > MAX_VISUAL_BALLS ? MAX_VISUAL_BALLS : activeBallCount)
   const isSummarized = activeBallCount > visibleBallCount
-  const roundDuration = DROP_DURATION_MS + Math.max(0, visibleBallCount - 1) * RELEASE_DELAY_MS
   const multipliers = useMemo(() => computeMultipliers(config.rows, config.risk), [config.rows, config.risk])
   const weights = useMemo(() => computeBinomialWeights(config.rows), [config.rows])
   const seed = gameResult ? BigInt(gameResult.randomSeed) : BigInt(Math.max(1, playNonce))
@@ -76,44 +65,111 @@ export function PlinkoBoard({ config, gameResult, instantResults = false, playNo
     () => Array.from({ length: visibleBallCount }, (_, index) => simulateBallPath(seed, gameId, index, config.rows, index === 0 && demoDropOriginX !== null ? demoDropOriginX : 50 + ((index * 13) % 7) - 3)),
     [config.rows, demoDropOriginX, gameId, seed, visibleBallCount],
   )
+  const motionScale = reducedMotion ? 0.5 : 1
+  const pathDurations = useMemo(() => paths.map((path) => getPathDuration(path) * motionScale), [motionScale, paths])
+  const longestPathDuration = Math.max(0, ...pathDurations)
+  const roundDuration = longestPathDuration + Math.max(0, visibleBallCount - 1) * RELEASE_DELAY_MS
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const update = () => setReducedMotion(media.matches)
+    update()
+    media.addEventListener?.("change", update)
+    return () => media.removeEventListener?.("change", update)
+  }, [])
 
   useEffect(() => {
     if (playNonce === 0) return
     setPhase("pending")
-    setProgress(0)
     setLandedSlots([])
-    lastCollisionRef.current = -1
+    playedContactsRef.current.clear()
   }, [playNonce])
 
   useEffect(() => {
     if (!gameResult) return
     const resultSlots = Array.from(new Set(Array.from({ length: activeBallCount }, (_, index) => getFinalSlot(seed, gameId, index, config.rows, weights))))
     if (instantResults) {
-      setProgress(1)
       setLandedSlots(resultSlots)
       setPhase("result")
       return
     }
-    setProgress(0)
     setLandedSlots([])
     setPhase("animating")
-    lastCollisionRef.current = -1
+    playedContactsRef.current.clear()
   }, [activeBallCount, config.rows, gameId, gameResult, instantResults, seed, weights])
 
   useEffect(() => {
     if (phase !== "pending" && phase !== "animating") return
-    const startedAt = performance.now()
+    let previousFrame = performance.now()
+    let elapsed = 0
     const duration = roundDuration
     let didFinish = false
     const tick = (now: number) => {
-      const elapsed = now - startedAt
+      // Clamp the first frame after a hidden-tab pause so a suspended tab
+      // cannot integrate a huge timestep and teleport a ball through the board.
+      elapsed += Math.min(50, Math.max(0, now - previousFrame))
+      previousFrame = now
       const nextProgress = phase === "pending" ? (elapsed % duration) / duration : Math.min(1, elapsed / duration)
-      setProgress(nextProgress)
-      const collisionStep = Math.floor(((elapsed % DROP_DURATION_MS) / DROP_DURATION_MS) * (config.rows + 1))
-      if (collisionStep !== lastCollisionRef.current) {
-        lastCollisionRef.current = collisionStep
-        soundEffects.playBallDrop()
+      const ballGroups = ballLayerRef.current?.querySelectorAll<SVGGElement>("[data-ball-index]")
+      let currentPeg: SVGGElement | null = null
+      ballGroups?.forEach((group) => {
+        const index = Number(group.dataset.ballIndex)
+        const localElapsed = elapsed - index * RELEASE_DELAY_MS
+        const path = paths[index]
+        const pathDuration = pathDurations[index]
+        const localProgress = localElapsed < 0 || pathDuration <= 0
+          ? null
+          : phase === "pending"
+            ? (((localElapsed % pathDuration) + pathDuration) % pathDuration) / pathDuration
+            : localElapsed > pathDuration ? null : localElapsed / pathDuration
+        if (localProgress === null || (phase !== "pending" && localElapsed > pathDuration)) {
+          group.style.display = "none"
+          return
+        }
+        const point = getPathPosition(path, localProgress)
+        const trailProgresses = reducedMotion ? [] : [0.035, 0.02, 0.01]
+        const trail = trailProgresses.map((offset) => getPathPosition(path, Math.max(0, localProgress - offset))).map((item) => `${item.x},${item.y}`).join(" ")
+        group.style.display = "block"
+        group.querySelector<SVGPolylineElement>("[data-ball-trail]")?.setAttribute("points", trail)
+        group.querySelector<SVGCircleElement>("[data-ball-glow]")?.setAttribute("cx", String(point.x))
+        group.querySelector<SVGCircleElement>("[data-ball-glow]")?.setAttribute("cy", String(point.y))
+        group.querySelector<SVGCircleElement>("[data-ball-core]")?.setAttribute("cx", String(point.x))
+        group.querySelector<SVGCircleElement>("[data-ball-core]")?.setAttribute("cy", String(point.y))
+        if (point.pegRow !== undefined && point.pegIndex !== undefined) {
+          const peg = document.querySelector<SVGGElement>(`[data-peg-row="${point.pegRow}"][data-peg-index="${point.pegIndex}"]`)
+          if (peg) {
+            currentPeg = peg
+          }
+          if (peg && activePegRef.current !== peg) {
+            if (activePegRef.current) {
+              activePegRef.current.querySelector("[data-peg-shell]")?.setAttribute("r", "2.1")
+              activePegRef.current.querySelector("[data-peg-core]")?.setAttribute("r", "0.9")
+            }
+            peg.querySelector("[data-peg-shell]")?.setAttribute("r", "3")
+            peg.querySelector("[data-peg-core]")?.setAttribute("r", "1.15")
+            activePegRef.current = peg
+          }
+        }
+      })
+      if (activePegRef.current && activePegRef.current !== currentPeg) {
+        activePegRef.current.querySelector("[data-peg-shell]")?.setAttribute("r", "2.1")
+        activePegRef.current.querySelector("[data-peg-core]")?.setAttribute("r", "0.9")
+        activePegRef.current = null
       }
+      paths.forEach((path, index) => {
+        const localElapsed = elapsed - index * RELEASE_DELAY_MS
+        if (localElapsed < 0) return
+        const pathDuration = pathDurations[index]
+        const localProgress = Math.min(1, localElapsed / pathDuration)
+        path.forEach((point, pointIndex) => {
+          if (point.pegRow === undefined || localProgress < pathProgressAtPoint(path, pointIndex)) return
+          const contactKey = `${index}-${point.pegRow}`
+          if (!playedContactsRef.current.has(contactKey)) {
+            playedContactsRef.current.add(contactKey)
+            if (visibleBallCount <= 8 || index < 8 || point.pegRow % 2 === 0) soundEffects.playBallDrop()
+          }
+        })
+      })
       if (phase === "animating" && nextProgress >= 1) {
         didFinish = true
         const resultSlots = Array.from(new Set(Array.from({ length: activeBallCount }, (_, index) => getFinalSlot(seed, gameId, index, config.rows, weights))))
@@ -123,7 +179,7 @@ export function PlinkoBoard({ config, gameResult, instantResults = false, playNo
         if (profit > Number.parseFloat(gameResult?.totalBet || "0") * 2) {
           setShowBigWinEffect(true)
           soundEffects.playBigWin()
-          window.setTimeout(() => setShowBigWinEffect(false), 2800)
+          landingTimeoutRef.current = window.setTimeout(() => setShowBigWinEffect(false), 2800)
         } else if (profit > 0) soundEffects.playMediumWin()
         else soundEffects.playLoss()
       }
@@ -131,7 +187,16 @@ export function PlinkoBoard({ config, gameResult, instantResults = false, playNo
     }
     animationFrameRef.current = requestAnimationFrame(tick)
     return () => { if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current) }
-  }, [activeBallCount, config.rows, gameId, gameResult, phase, roundDuration, seed, weights])
+  }, [activeBallCount, config.rows, gameId, gameResult, pathDurations, paths, phase, reducedMotion, roundDuration, seed, visibleBallCount, weights])
+
+  useEffect(() => () => {
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current)
+    if (landingTimeoutRef.current) window.clearTimeout(landingTimeoutRef.current)
+    if (activePegRef.current) {
+      activePegRef.current.querySelector("[data-peg-shell]")?.setAttribute("r", "2.1")
+      activePegRef.current.querySelector("[data-peg-core]")?.setAttribute("r", "0.9")
+    }
+  }, [])
 
   const status = phase === "pending"
     ? { label: "Waiting for randomness", detail: "Your game is secured on-chain. VRF is preparing the result.", color: "text-amber-300", icon: Wifi }
@@ -144,35 +209,15 @@ export function PlinkoBoard({ config, gameResult, instantResults = false, playNo
   const bestLandedMultiplier = landedSlots.length > 0 ? Math.max(...landedSlots.map((slot) => multipliers[slot] / 10000)) : 0
 
   const boardPegs = useMemo(() => {
-    const pegs: Array<{ x: number; y: number; row: number }> = []
-    for (let row = 0; row <= config.rows; row++) {
+    const pegs: Array<{ x: number; y: number; row: number; pin: number }> = []
+    for (let row = 0; row < config.rows; row++) {
       const count = row + 1
       const step = 66 / (config.rows + 1)
       const startX = 50 - ((count - 1) * step) / 2
-      for (let pin = 0; pin < count; pin++) pegs.push({ x: startX + pin * step, y: 7 + (72 / (config.rows + 1)) * row, row })
+      for (let pin = 0; pin < count; pin++) pegs.push({ x: startX + pin * step, y: 7 + (72 / (config.rows + 1)) * row, row, pin })
     }
     return pegs
   }, [config.rows])
-
-  const getBallProgress = (index: number) => {
-    const elapsed = progress * roundDuration - index * RELEASE_DELAY_MS
-    if (phase === "pending") {
-      const cycleElapsed = ((elapsed % roundDuration) + roundDuration) % roundDuration
-      return cycleElapsed > DROP_DURATION_MS ? null : cycleElapsed / DROP_DURATION_MS
-    }
-    if (elapsed < 0 || elapsed > DROP_DURATION_MS) return null
-    return elapsed / DROP_DURATION_MS
-  }
-
-  const renderBallPosition = (path: Point[], index: number) => {
-    const ballProgress = getBallProgress(index)
-    return ballProgress === null ? null : interpolatePath(path, ballProgress)
-  }
-
-  const activeBallPositions = paths.map((path, index) => {
-    const point = renderBallPosition(path, index)
-    return point ? { point, index } : null
-  }).filter((ball): ball is { point: Point; index: number } => ball !== null)
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!demoMode || !interactiveDropEnabled) return
@@ -211,6 +256,7 @@ export function PlinkoBoard({ config, gameResult, instantResults = false, playNo
       <div
         data-testid="plinko-board"
         data-phase={phase}
+        data-animation-model="peg-to-peg-ballistic"
         data-demo-origin-x={demoMode && demoDropOriginX !== null ? demoDropOriginX : ""}
         data-interactive-drop={demoMode && interactiveDropEnabled ? "on" : "off"}
         className={`relative aspect-[4/3] overflow-hidden rounded-2xl border border-purple-400/20 bg-[radial-gradient(circle_at_50%_15%,rgba(124,58,237,0.18),transparent_42%),linear-gradient(145deg,rgba(15,23,42,0.98),rgba(30,13,55,0.98))] shadow-[inset_0_0_50px_rgba(76,29,149,0.22),0_0_35px_rgba(88,28,135,0.14)] ${demoMode && interactiveDropEnabled ? "cursor-crosshair" : ""}`}
@@ -230,17 +276,9 @@ export function PlinkoBoard({ config, gameResult, instantResults = false, playNo
           </defs>
           <path d="M 17 82 L 83 82" stroke="rgba(192,132,252,0.18)" strokeWidth="0.35" />
           {boardPegs.map((peg, index) => {
-            const isContacting = (phase === "pending" || phase === "animating") && activeBallPositions.some(({ point }) => Math.abs(point.y - peg.y) < 1.25 && Math.abs(point.x - peg.x) < 3.5)
-            return <g key={`${peg.row}-${index}`}><circle cx={peg.x} cy={peg.y} r={isContacting ? "3" : "2.1"} fill={isContacting ? "rgba(103,232,249,0.32)" : "rgba(168,85,247,0.13)"} filter="url(#soft-glow)" /><circle cx={peg.x} cy={peg.y - 0.25} r={isContacting ? "1.15" : "0.9"} fill={isContacting ? "#67e8f9" : "url(#peg-glow)"} /><circle cx={peg.x - 0.28} cy={peg.y - 0.52} r="0.22" fill="#fff" opacity="0.7" /></g>
+            return <g key={`${peg.row}-${index}`} data-peg-row={peg.row} data-peg-index={peg.pin}><circle data-peg-shell cx={peg.x} cy={peg.y} r="2.1" fill="rgba(168,85,247,0.13)" filter="url(#soft-glow)" /><circle data-peg-core cx={peg.x} cy={peg.y - 0.25} r="0.9" fill="url(#peg-glow)" /><circle cx={peg.x - 0.28} cy={peg.y - 0.52} r="0.22" fill="#fff" opacity="0.7" /></g>
           })}
-          {paths.map((path, index) => {
-            if (phase === "ready" || phase === "result" || path.length === 0) return null
-            const point = renderBallPosition(path, index)
-            if (!point) return null
-            const ballProgress = getBallProgress(index) || 0
-            const trail = path.slice(0, Math.max(2, Math.floor(ballProgress * path.length))).map((item) => `${item.x},${item.y}`).join(" ")
-            return <g key={`ball-${index}`}><polyline points={trail} fill="none" stroke="#67e8f9" strokeWidth="0.65" opacity="0.22" strokeLinecap="round" /><circle cx={point.x} cy={point.y} r="2.9" fill="#22d3ee" opacity="0.2" filter="url(#soft-glow)" /><circle cx={point.x} cy={point.y} r="1.2" fill="#e0f2fe" stroke="#67e8f9" strokeWidth="0.55" /></g>
-          })}
+          <g ref={ballLayerRef} aria-hidden="true">{paths.map((_, index) => <g key={`ball-${index}`} data-ball-index={index} style={{ display: "none" }}><polyline data-ball-trail fill="none" stroke="#67e8f9" strokeWidth="0.65" opacity="0.22" strokeLinecap="round" /><circle data-ball-glow r="2.9" fill="#22d3ee" opacity="0.2" filter="url(#soft-glow)" /><circle data-ball-core r="1.2" fill="#e0f2fe" stroke="#67e8f9" strokeWidth="0.55" /></g>)}</g>
           {multipliers.map((scaledMultiplier, slot) => {
             const multiplier = scaledMultiplier / 10000
             const x = 17 + ((slot + 0.5) / (config.rows + 1)) * 66

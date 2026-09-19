@@ -15,6 +15,7 @@
     "local-deploy": "node hardhat-run.cjs run scripts/deploy.ts --network localhost",
     "abi:check": "node scripts/check-abi.cjs",
     "browser:test": "node scripts/browser-interaction.cjs",
+    "animation:test": "node hardhat-run.cjs run scripts/plinko-trajectory-check.ts --network hardhat",
     "economics:rtp": "node hardhat-run.cjs run scripts/rtp-report.ts --network hardhat",
     "economics:treasury": "node scripts/treasury-exposure-simulation.cjs",
     "gas:report": "node hardhat-run.cjs run scripts/gas-report.ts --network hardhat",
