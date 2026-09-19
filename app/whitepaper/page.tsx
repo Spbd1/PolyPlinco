@@ -16,7 +16,7 @@ const sections = [
   { id: "mechanics", title: "Game Mechanics & Fairness" },
   { id: "tokenomics", title: "Tokenomics" },
   { id: "mining", title: "Loss-Mining Emission Model" },
-  { id: "vault", title: "Vault, Swap & Deflationary Design" },
+  { id: "vault", title: "Vault, Swap & Post-Emission Supply Reduction" },
   { id: "economics", title: "Economic Intuition" },
   { id: "risk", title: "Risk & Responsibility" },
   { id: "roadmap", title: "Roadmap & Future Directions" },
@@ -97,7 +97,7 @@ export default function WhitepaperPage() {
               <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent mb-4">
                 PolyPlinko Whitepaper
               </h1>
-              <p className="text-xl text-slate-400">A Provably Fair, Deflationary Plinko Protocol on Polygon PoS</p>
+              <p className="text-xl text-slate-400">A Provably Fair, Capped-Emission Plinko Protocol Designed for Polygon PoS</p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <div className="px-4 py-2 rounded-lg bg-purple-900/30 border border-purple-700/50">
                   <span className="text-sm text-purple-300">Version 1.0</span>
@@ -111,7 +111,7 @@ export default function WhitepaperPage() {
             {/* Key Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
               <Card className="p-6 bg-gradient-to-br from-purple-900/20 to-purple-900/5 border-purple-700/50">
-                <div className="text-sm text-purple-300 mb-1">Total Supply</div>
+                <div className="text-sm text-purple-300 mb-1">Maximum Supply Cap</div>
                 <div className="text-3xl font-bold text-white">1,000,000</div>
                 <div className="text-sm text-slate-400 mt-1">PPL Tokens</div>
               </Card>
@@ -134,8 +134,9 @@ export default function WhitepaperPage() {
                 <h2 className="text-3xl font-bold text-white mb-6 pb-3 border-b border-slate-800">1. Abstract</h2>
                 <div className="prose prose-invert max-w-none space-y-4 text-slate-300 leading-relaxed">
                   <p>
-                    PolyPlinko is a provably fair, on-chain Plinko protocol deployed on Polygon PoS. It combines a
-                    transparent game of chance with a carefully engineered deflationary token and vault system.
+                    PolyPlinko is an on-chain Plinko protocol designed for Polygon PoS. It combines a transparent game
+                    of chance with a capped-emission token and internal reserve system. The current repository is
+                    locally implemented and tested; no public-chain deployment is represented by this document.
                   </p>
                   <p>
                     Instead of treating each game as an isolated bet, PolyPlinko turns long-term participation into a
@@ -147,16 +148,16 @@ export default function WhitepaperPage() {
                     </li>
                     <li>A portion of player losses is converted into PPL tokens through a loss-mining schedule.</li>
                     <li>
-                      Once mining is complete, subsequent losses create automatic buyback pressure on PPL and reinforce
-                      the system's vault.
+                      Once mining is complete, eligible subsequent losses can create automatic buyback pressure on PPL,
+                      subject to available AMM liquidity and protocol guards.
                     </li>
                   </ul>
                   <p>The result is a design where:</p>
                   <ul className="list-disc list-inside space-y-2 ml-4">
                     <li>The underlying game remains a probabilistic, risky activity, and players can lose money.</li>
                     <li>
-                      At the same time, the protocol shares value creation with participants over the long term through
-                      emission, buyback, and burn mechanics.
+                      At the same time, the protocol gives participants token exposure through capped emission,
+                      conditional buyback, and burn mechanics. Token rewards do not reimburse gambling losses.
                     </li>
                   </ul>
                   <Card className="mt-6 p-6 bg-amber-900/10 border-amber-700/50">
@@ -194,16 +195,14 @@ export default function WhitepaperPage() {
                       risk. Players can and will lose MATIC, and outcomes remain random.
                     </p>
                     <p className="text-sm text-slate-400">
-                      Instead, our goal is to <strong>soften the impact of loss</strong> and align the experience with
-                      long-term participation rather than pure extraction. Every loss interacts with the protocol in
-                      three beneficial ways:
+                      Instead, the protocol records loss-related token mechanics transparently, without promising
+                      recovery or value. Depending on the emission phase, a positive net loss may interact with the
+                      protocol in these ways:
                     </p>
                     <ol className="list-decimal list-inside space-y-2 ml-4 mt-3 text-sm text-slate-400">
-                      <li>It helps drive game liquidity and bankroll sustainability</li>
-                      <li>It generates or buys back PPL tokens for the player (loss-mining or post-mining buyback)</li>
-                      <li>
-                        It contributes to deflationary mechanisms (burn and vault growth) that strengthen token scarcity
-                      </li>
+                      <li>It is accounted for alongside the house bankroll and protected liabilities</li>
+                      <li>During emission, it can mint capped PPL rewards; after exhaustion, it can trigger a guarded PPL buyback</li>
+                      <li>Post-mining buybacks burn 30% of purchased PPL, while other independent burn paths may also apply</li>
                     </ol>
                   </Card>
 
@@ -219,15 +218,15 @@ export default function WhitepaperPage() {
                     <Card className="p-4 bg-blue-900/10 border-blue-700/30">
                       <h3 className="font-semibold text-blue-300 mb-2">Explicit Economics</h3>
                       <p className="text-sm text-slate-400">
-                        House edge (~10%), emission tiers, swap fees (5%), and burn mechanics are all encoded in smart
-                        contracts with clear, predictable math.
+                        House edge, capped emission tiers, swap fees, burn mechanics, and game-admission limits are
+                        encoded in smart contracts with explicit, testable math.
                       </p>
                     </Card>
                     <Card className="p-4 bg-cyan-900/10 border-cyan-700/30">
                       <h3 className="font-semibold text-cyan-300 mb-2">Long-term Alignment</h3>
                       <p className="text-sm text-slate-400">
-                        Player losses are partially converted to token exposure and future buyback pressure, instead of
-                        disappearing entirely into operator pockets.
+                        Player losses may create token exposure according to the active phase; token value is variable
+                        and rewards do not make a losing wager profitable.
                       </p>
                     </Card>
                   </div>
@@ -248,14 +247,14 @@ export default function WhitepaperPage() {
                   3. System Overview
                 </h2>
                 <div className="prose prose-invert max-w-none space-y-6 text-slate-300 leading-relaxed">
-                  <p>PolyPlinko consists of three main components on Polygon:</p>
+                  <p>PolyPlinko is designed around three main components for Polygon PoS:</p>
 
                   <Card className="p-6 bg-slate-900/50 border-slate-700">
                     <h3 className="text-xl font-semibold text-purple-400 mb-3">1. Plinko Game Contract</h3>
                     <ul className="list-disc list-inside space-y-2 text-sm">
                       <li>Accepts bets in MATIC.</li>
-                      <li>Uses verifiable randomness (e.g. Chainlink VRF) to determine ball paths.</li>
-                      <li>Applies predefined multiplier tables with ~10% house edge per ball.</li>
+                      <li>Uses an authenticated VRF callback architecture intended for Chainlink VRF v2.5-style production use.</li>
+                      <li>Applies predefined multiplier tables with approximately 90.03%–90.48% RTP, depending on configuration.</li>
                       <li>Transfers winnings directly to the player's address.</li>
                       <li>
                         Routes portions of net losses to:
@@ -270,9 +269,9 @@ export default function WhitepaperPage() {
                   <Card className="p-6 bg-slate-900/50 border-slate-700">
                     <h3 className="text-xl font-semibold text-blue-400 mb-3">2. PPL Token (ERC-20)</h3>
                     <ul className="list-disc list-inside space-y-2 text-sm">
-                      <li>Total fixed supply: 1,000,000 PPL.</li>
+                      <li>Maximum supply cap: 1,000,000 PPL; initial supply and later capped emission are separate phases.</li>
                       <li>
-                        Deflationary mechanics via:
+                        Post-emission supply-reduction mechanics via:
                         <ul className="list-circle list-inside ml-6 mt-1">
                           <li>Swap fees and burns.</li>
                           <li>Buyback & burn from the vault.</li>
@@ -285,10 +284,10 @@ export default function WhitepaperPage() {
                   <Card className="p-6 bg-slate-900/50 border-slate-700">
                     <h3 className="text-xl font-semibold text-cyan-400 mb-3">3. Vault & Swap System</h3>
                     <ul className="list-disc list-inside space-y-2 text-sm">
-                      <li>Holds MATIC and PPL reserves.</li>
-                      <li>Provides an internal MATIC ↔ PPL swap (constant-product AMM style).</li>
-                      <li>Collects swap fees and uses them periodically for buyback and burn.</li>
-                      <li>Receives a portion of player losses, reinforcing the system's resilience.</li>
+                      <li>Maintains distinct internal AMM reserves, a native fee bucket, house bankroll, and protected liabilities.</li>
+                      <li>Provides an internal MATIC ↔ PPL swap using constant-product-style reserve math.</li>
+                      <li>Collects swap fees and can trigger automatic or owner-operated buyback-and-burn actions.</li>
+                      <li>Does not guarantee liquidity, price stability, profitability, or uninterrupted availability.</li>
                     </ul>
                   </Card>
                 </div>
@@ -310,13 +309,18 @@ export default function WhitepaperPage() {
                       <div className="text-sm text-slate-400">Risk Settings</div>
                     </Card>
                     <Card className="p-4 bg-cyan-900/10 border-cyan-700/30 text-center">
-                      <div className="text-2xl font-bold text-cyan-300 mb-1">Up to 1,000</div>
+                      <div className="text-2xl font-bold text-cyan-300 mb-1">Up to 256</div>
                       <div className="text-sm text-slate-400">Balls per Play</div>
                     </Card>
                   </div>
 
                   <h3 className="text-xl font-semibold text-white mt-6">Randomness & Fairness</h3>
-                  <p>Each play requests randomness from a verifiable on-chain source (Chainlink VRF):</p>
+                  <p>
+                    In the intended public-chain configuration, each paid play requests randomness through an
+                    authenticated Chainlink VRF v2.5-style coordinator flow. Local development and tests use the
+                    repository's mock coordinator path; that local path is not a substitute for production VRF
+                    validation.
+                  </p>
                   <ul className="list-disc list-inside space-y-2 ml-4">
                     <li>A random seed is generated and stored on-chain.</li>
                     <li>
@@ -332,8 +336,18 @@ export default function WhitepaperPage() {
                   <Card className="mt-6 p-6 bg-green-900/10 border-green-700/50">
                     <h4 className="font-semibold text-green-300 mb-2">Provably Fair Guarantee</h4>
                     <p className="text-sm text-slate-400">
-                      Because all randomness and outcomes are on-chain and reproducible, anyone can recompute and verify
-                      results. The game cannot "secretly adjust" outcomes against players.
+                      The authoritative paid result is stored and settled on-chain from the coordinator response, and
+                      the deterministic result mapping can be recomputed from the stored seed. This describes the
+                      intended authenticated flow, not a claim that public-chain deployment or external VRF operation
+                      has already been validated.
+                    </p>
+                  </Card>
+                  <Card className="mt-6 p-6 bg-amber-900/10 border-amber-700/50">
+                    <p className="text-sm text-amber-300">
+                      <strong>VRF liveness note:</strong> If the external randomness fulfillment does not arrive, a
+                      submitted game can remain pending and its liability can remain reserved. The current
+                      implementation does not yet include an expiry/refund recovery path for an indefinitely
+                      unfulfilled request.
                     </p>
                   </Card>
                 </div>
@@ -364,8 +378,8 @@ export default function WhitepaperPage() {
                     </Card>
                     <Card className="p-4 bg-slate-900/50 border-slate-700">
                       <div className="flex justify-between items-start mb-2">
-                        <span className="font-semibold text-white">Max Supply (Fixed)</span>
-                        <span className="text-green-400">1,000,000 PPL</span>
+                        <span className="font-semibold text-white">Maximum Supply Cap</span>
+                        <span className="text-green-400">1,000,000 PPL maximum cap</span>
                       </div>
                     </Card>
                   </div>
@@ -375,12 +389,12 @@ export default function WhitepaperPage() {
                     <Card className="p-6 bg-purple-900/10 border-purple-700/30">
                       <div className="text-3xl font-bold text-purple-300 mb-2">10,000</div>
                       <div className="text-sm text-slate-400 mb-3">1% - Developer Allocation</div>
-                      <p className="text-xs text-slate-500">Granted for seeding initial capital (1,000 MATIC)</p>
+                      <p className="text-xs text-slate-500">Minted once to the configured developer address at genesis</p>
                     </Card>
                     <Card className="p-6 bg-blue-900/10 border-blue-700/30">
                       <div className="text-3xl font-bold text-blue-300 mb-2">90,000</div>
-                      <div className="text-sm text-slate-400 mb-3">9% - Vault & Liquidity</div>
-                      <p className="text-xs text-slate-500">Initial swap liquidity and protocol reserves</p>
+                      <div className="text-sm text-slate-400 mb-3">9% - Game/Protocol Allocation</div>
+                      <p className="text-xs text-slate-500">Available to the game contract; deployment configuration determines initial AMM seeding</p>
                     </Card>
                     <Card className="p-6 bg-cyan-900/10 border-cyan-700/30">
                       <div className="text-3xl font-bold text-cyan-300 mb-2">900,000</div>
@@ -391,8 +405,21 @@ export default function WhitepaperPage() {
 
                   <Card className="mt-6 p-6 bg-red-900/10 border-red-700/50">
                     <p className="text-sm text-red-300 font-medium">
-                      No further minting beyond 1,000,000 PPL is ever allowed. The supply is permanently capped.
+                      The maximum supply is capped at 1,000,000 PPL. The initial 100,000 PPL is followed by up to
+                      900,000 PPL of capped loss-mining emission; after mining exhaustion, no new mining tokens can
+                      be minted and burn mechanisms may reduce totalSupply.
                     </p>
+                  </Card>
+                  <Card className="mt-6 p-6 bg-slate-900/60 border-slate-700">
+                    <h3 className="text-lg font-semibold text-purple-300 mb-3">Wager Accounting & Treasury Admission</h3>
+                    <ul className="list-disc list-inside space-y-2 text-sm text-slate-400">
+                      <li>Each wager accrues a 1% developer fee as a protected, pull-based liability; it is not pushed during game creation.</li>
+                      <li>The remaining 99% is the net wager used for payout and positive net-loss accounting. Loss mining uses <code className="text-purple-300">max(99% of total wager − payout, 0)</code>.</li>
+                      <li>A new game must fit within free house bankroll, defined as <code className="text-purple-300">max(houseBankroll − lockedBankroll, 0)</code>.</li>
+                      <li>Its maximum possible payout must also be no more than 5% of that current free bankroll. Existing pending games therefore reduce capacity for later games.</li>
+                      <li>The total-wager ceiling is owner-configurable and initializes at 1,000 native units; swaps are bounded separately by a 100-native-unit input/value limit, reserve-impact checks, and minimum-liquidity checks.</li>
+                    </ul>
+                    <p className="text-xs text-slate-500 mt-4">This limits new exposure using maximum liability rather than win probability. It reduces insolvency risk but does not guarantee profit, availability, or successful external VRF fulfillment.</p>
                   </Card>
                 </div>
               </section>
@@ -436,6 +463,12 @@ export default function WhitepaperPage() {
                       earlier participants mine tokens more cheaply; later participants face higher "loss cost" per
                       token.
                     </span>
+                  </p>
+                  <p>
+                    Net loss is calculated after the 1% developer fee is accounted for:{" "}
+                    <code className="text-purple-400 bg-slate-900/50 px-2 py-1 rounded">max(99% of total wager − payout, 0)</code>.
+                    The fee remains a protected liability and is withdrawn separately; PPL rewards are not a refund or
+                    reimbursement of the wager.
                   </p>
 
                   <h3 className="text-xl font-semibold text-white mt-6">Mining Tiers</h3>
@@ -508,23 +541,25 @@ export default function WhitepaperPage() {
                 </div>
               </section>
 
-              {/* Vault & Deflationary Design */}
+              {/* Vault & Post-Emission Supply Reduction */}
               <section id="vault" className="scroll-mt-24">
                 <h2 className="text-3xl font-bold text-white mb-6 pb-3 border-b border-slate-800">
-                  7. Vault, Swap & Deflationary Design
+                  7. Vault, Swap & Post-Emission Supply Reduction
                 </h2>
                 <div className="prose prose-invert max-w-none space-y-4 text-slate-300 leading-relaxed">
                   <p>
-                    Beyond emission, PolyPlinko uses deflationary mechanisms to reduce circulating supply and support
-                    long-term scarcity.
+                  During the capped emission phase, totalSupply can increase as loss-mining rewards are issued, up to
+                  the 1,000,000 PPL maximum. After mining exhaustion, burn mechanisms can reduce totalSupply and may
+                  create post-emission supply reduction; neither token scarcity nor price appreciation is guaranteed.
                   </p>
 
                   <h3 className="text-xl font-semibold text-white mt-6">Swap System</h3>
                   <p>PolyPlinko includes a simple AMM-style swap for PPL:</p>
                   <ul className="list-disc list-inside space-y-2 ml-4">
                     <li>Users can swap MATIC ↔ PPL directly in the protocol.</li>
-                    <li>The pool maintains reserves of MATIC and PPL and applies a constant-product pricing rule.</li>
+                    <li>The internal pool maintains native and PPL reserves and applies constant-product-style reserve pricing.</li>
                     <li>Each user-initiated swap charges a 5% fee on the input side.</li>
+                    <li>Trades are subject to reserve/liquidity checks, a maximum input/value bound, and a 30% reserve-impact limit.</li>
                   </ul>
 
                   <div className="grid md:grid-cols-2 gap-4 mt-6">
@@ -545,17 +580,27 @@ export default function WhitepaperPage() {
                       </ul>
                     </Card>
                   </div>
+                  <Card className="mt-6 p-6 bg-amber-900/10 border-amber-700/50">
+                    <h4 className="font-semibold text-amber-300 mb-2">AMM and Market-Ordering Risk</h4>
+                    <p className="text-sm text-slate-400">
+                      This is an internal reserve-priced AMM, not an external Uniswap pool. It uses trade-size and
+                      reserve-impact bounds, but no independent oracle or complete MEV protection. Spot prices can be
+                      moved by trades, and public-mempool sandwich or other ordering strategies remain possible. PPL
+                      liquidity, execution price, and buyback value are not guaranteed.
+                    </p>
+                  </Card>
 
                   <h3 className="text-xl font-semibold text-white mt-8">Buyback & Burn from Vault</h3>
-                  <p>The vault can periodically execute a buyback & burn:</p>
+                  <p>There are separate buyback-and-burn paths:</p>
                   <ol className="list-decimal list-inside space-y-2 ml-4">
-                    <li>Use accumulated MATIC fees to buy PPL from the swap pool.</li>
-                    <li>Burn the acquired PPL.</li>
+                    <li>Accumulated native fee balance can trigger an automatic threshold buyback, and the owner can separately call the owner-operated buyback path.</li>
+                    <li>Those paths buy PPL from the internal reserve pool and burn the acquired PPL.</li>
+                    <li>After mining exhaustion, a player-loss buyback uses 70% of applicable positive net loss; 30% of those purchased PPL is burned and 70% is sent to the player.</li>
                   </ol>
                   <p className="mt-4">This has two effects:</p>
                   <ul className="list-disc list-inside space-y-2 ml-4">
                     <li>Reduces circulating supply of PPL.</li>
-                    <li>Supports long-term price pressure by systematically purchasing from the market.</li>
+                    <li>Can create buy pressure and reduce supply, subject to liquidity, execution, and market conditions; it is not a price guarantee.</li>
                   </ul>
 
                   {/* Chart B */}
@@ -601,8 +646,8 @@ export default function WhitepaperPage() {
                     </p>
                     <ul className="list-disc list-inside space-y-2 text-sm text-slate-400 ml-4">
                       <li>
-                        <strong>System Resilience:</strong> Strengthens bankroll and liquidity reserves to handle
-                        variance and ensure the protocol can always pay winners
+                        <strong>System Resilience:</strong> Supports bankroll accounting and protected-liability
+                        coverage against variance; it does not guarantee payment in every operational circumstance
                       </li>
                       <li>
                         <strong>Future Buyback & Burn:</strong> Accumulated vault funds can be used for periodic buyback
@@ -622,14 +667,14 @@ export default function WhitepaperPage() {
 
                   <p className="mt-6">This design creates:</p>
                   <ul className="list-disc list-inside space-y-2 ml-4">
-                    <li>Continuous market demand for PPL as long as the game is played and losses occur.</li>
+                    <li>Conditional PPL demand after mining exhaustion when eligible losses, available liquidity, and protocol guards allow a buyback to execute.</li>
                     <li>
-                      A mechanism where losers receive tokens purchased on their behalf (70%), rather than newly minted
-                      ones.
+                      A post-mining mechanism where 70% of purchased PPL is sent to the losing player, while 30% is
+                      permanently burned; this is separate from capped mining issuance.
                     </li>
                     <li>
-                      House retention (30%) that supports long-term system health and can fund additional
-                      deflationary mechanisms.
+                      Native house retention of 30% that supports protocol accounting and may fund future operations;
+                      it is not a guarantee of long-term token performance.
                     </li>
                     <li>
                       The 5% swap fee on user-initiated trades continues to burn PPL and grow reserves, enhancing the
@@ -648,7 +693,7 @@ export default function WhitepaperPage() {
                   <p>From a mathematical standpoint, each Plinko ball remains a game of chance:</p>
                   <ul className="list-disc list-inside space-y-2 ml-4">
                     <li>Outcomes are random and verifiable.</li>
-                    <li>Expected return per ball is below 100% (approximately 90% due to ~10% house edge).</li>
+                    <li>Verified RTP is approximately 90.03%–90.48% across supported configurations, implying a gross house edge of approximately 9.52%–9.97%.</li>
                     <li>Players can lose part or all of their stake in any given game.</li>
                   </ul>
 
@@ -663,24 +708,23 @@ export default function WhitepaperPage() {
                         1. Losses Generate a Persistent Asset
                       </h3>
                       <p className="text-sm text-slate-400">
-                        Part of a player's losses converts into PPL via mining or post-mining buyback (70%). These
-                        tokens represent a share of the protocol's future dynamics and deflationary mechanisms, rather
-                        than disappearing into an opaque house balance. This doesn't make losing profitable, but it
-                        transforms loss into long-term protocol participation.
+                        Part of a player's positive net loss can result in PPL via capped mining or, after exhaustion,
+                        a guarded buyback. Token value is variable, AMM realization is subject to liquidity and
+                        slippage, and these rewards do not reimburse the wager or make losing profitable.
                       </p>
                     </Card>
 
                     <Card className="p-6 bg-gradient-to-r from-blue-900/20 to-blue-900/5 border-blue-700/50">
-                      <h3 className="text-lg font-semibold text-blue-300 mb-3">2. Deflationary, Not Inflationary</h3>
+                      <h3 className="text-lg font-semibold text-blue-300 mb-3">2. Capped Emission, Then Possible Deflation</h3>
                       <ul className="text-sm text-slate-400 space-y-2">
-                        <li>• Supply is hard-capped at 1,000,000 PPL with no possibility of additional minting.</li>
+                        <li>• Supply begins at 100,000 PPL and can increase through capped loss-mining emission up to the 1,000,000 PPL maximum.</li>
                         <li>
-                          • After mining completes, no new tokens are created; instead, tokens are bought back from the
-                          market and redistributed (70%) or retained by the house (30% + swap fees).
+                          • After mining completes, no new mining tokens are created. Eligible losses may use 70% of
+                          applicable native value for buyback; purchased PPL is split 30% burn / 70% player.
                         </li>
                         <li>
-                          • Swap fees (5%) and vault buyback operations continually reduce effective supply, creating
-                          potential scarcity pressure.
+                          • Swap fees and buyback-and-burn operations can reduce totalSupply, creating potential
+                          scarcity pressure without guaranteeing price support.
                         </li>
                       </ul>
                     </Card>
@@ -691,7 +735,7 @@ export default function WhitepaperPage() {
                       <ul className="text-sm text-slate-400 space-y-2">
                         <li>• Swap volume grows, generating more burn fees</li>
                         <li>• House reserves retain the 30% post-mining allocation</li>
-                        <li>• Buyback operations create continuous demand pressure</li>
+                        <li>• Successful post-mining buybacks can create additional demand pressure</li>
                         <li>• Circulating supply may gradually decline due to burns</li>
                       </ul>
                       <p className="text-sm text-slate-500 italic mt-3">
@@ -741,7 +785,8 @@ export default function WhitepaperPage() {
                     <Card className="p-4 bg-slate-900/50 border-slate-700">
                       <h4 className="font-semibold text-amber-300 mb-2">No Guarantees of Profit</h4>
                       <p className="text-sm text-slate-400">
-                        The system is designed to be mathematically sustainable, not to assure gains.
+                        The system uses explicit probability, accounting, and exposure controls; these do not assure
+                        gains, solvency under every external condition, or uninterrupted service.
                       </p>
                     </Card>
 
@@ -776,6 +821,21 @@ export default function WhitepaperPage() {
                       participation,{" "}
                       <span className="text-amber-400 font-semibold">it does not eliminate uncertainty or risk.</span>
                     </p>
+                  </Card>
+                  <Card className="mt-8 p-6 bg-slate-900/70 border-slate-700">
+                    <h3 className="text-lg font-semibold text-cyan-300 mb-3">Current Status & Trust Boundaries</h3>
+                    <p className="text-sm text-slate-400 mb-3">
+                      The repository implementation, treasury accounting, tokenomics, simulations, and frontend are
+                      locally implemented and tested. No public-chain deployment, real Chainlink VRF validation, or
+                      independent external smart-contract audit is represented here. Broad real-money launch and
+                      legal/compliance review remain incomplete.
+                    </p>
+                    <ul className="list-disc list-inside space-y-2 text-sm text-slate-400">
+                      <li>Users sign paid transactions with their own wallets; the web server is not intended to hold privileged blockchain keys or choose paid outcomes.</li>
+                      <li>The owner can pause game/swap activity, withdraw safely available protocol funds, update the developer address, adjust the maximum total bet, and operate the owner buyback-and-burn path, subject to contract checks.</li>
+                      <li>The owner has no arbitrary PPL mint authority. MAX_SUPPLY and the mining allocation remain enforced, and the 30% post-mining burn and 5% new-game liability cap have no mutable owner setter.</li>
+                      <li>Server compromise can still disrupt or misrepresent the user interface; users should verify wallet transaction details and on-chain receipts.</li>
+                    </ul>
                   </Card>
                 </div>
               </section>
