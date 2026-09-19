@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
-import { RiskLevel } from "@/lib/contracts"
+import { PAID_MODE_ENABLED, RiskLevel } from "@/lib/contracts"
 import { useAccount, useConnect } from "wagmi"
 import { injected } from "wagmi/connectors"
 import { parseEther, formatEther } from "viem"
@@ -222,6 +222,7 @@ export function GameControls({
 
   const getButtonText = () => {
     if (demoMode) return "Play Demo Round"
+    if (!PAID_MODE_ENABLED) return "Paid Mode Unavailable"
     if (isConnecting) return "Connecting Wallet..."
     if (isPending) return "Sending Transaction..."
     if (isConfirming) return "Waiting for Result..."
@@ -229,7 +230,7 @@ export function GameControls({
   }
 
   const isDisabled =
-    isConnecting || isPending || isConfirming || (demoMode && !canPlayDemo(config.balls)) || exceedsBankroll
+    isConnecting || isPending || isConfirming || (!demoMode && !PAID_MODE_ENABLED) || (demoMode && !canPlayDemo(config.balls)) || exceedsBankroll
 
   return (
     <Card className="p-6 bg-slate-900/50 border-slate-800 backdrop-blur-sm">
@@ -394,6 +395,12 @@ export function GameControls({
 
         {!demoMode && (
           <>
+            {!PAID_MODE_ENABLED && (
+              <Card className="p-4 bg-slate-800/40 border-slate-700/60">
+                <p className="text-sm font-semibold text-slate-300">Paid mode is disabled</p>
+                <p className="mt-1 text-xs text-slate-500">This deployment is configured for no-money demo access only.</p>
+              </Card>
+            )}
             {exceedsBankroll && (
               <Card className="p-4 bg-gradient-to-r from-red-900/30 to-orange-900/30 border-red-700/50">
                 <div className="flex items-start gap-3">

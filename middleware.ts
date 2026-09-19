@@ -11,7 +11,9 @@ const RATE_LIMIT_WINDOW = 60 * 1000 // 1 minute
 export function middleware(request: NextRequest) {
   // Only apply rate limiting to API routes
   if (request.nextUrl.pathname.startsWith("/api/")) {
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+    // Nginx overwrites X-Real-IP from the socket address. Do not trust a
+    // client-supplied X-Forwarded-For value for application rate limiting.
+    const ip = request.headers.get("x-real-ip")?.trim() || "unknown"
     const now = Date.now()
 
     // Get or initialize rate limit entry

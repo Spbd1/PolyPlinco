@@ -2,13 +2,15 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 const configuredGameAddress = process.env.NEXT_PUBLIC_GAME_CONTRACT_ADDRESS || ZERO_ADDRESS
 const configuredTokenAddress = process.env.NEXT_PUBLIC_PPL_CONTRACT_ADDRESS || ZERO_ADDRESS
 const configuredNetworkId = process.env.NEXT_PUBLIC_NETWORK_ID
+const paidModeFlag = process.env.NEXT_PUBLIC_PAID_MODE_ENABLED !== "false"
 const isProduction = process.env.NODE_ENV === "production" && process.env.APP_ENV === "production"
 
 export const POLY_PLINKO_GAME_ADDRESS = configuredGameAddress
 export const POLY_PLINKO_TOKEN_ADDRESS = configuredTokenAddress
+export const PAID_MODE_ENABLED = paidModeFlag
 
 export function isConfiguredAddress(address: string): boolean {
-  return /^0x[a-fA-F0-9]{40}$/.test(address) && !/^0x0{40}$/i.test(address)
+  return paidModeFlag && /^0x[a-fA-F0-9]{40}$/.test(address) && !/^0x0{40}$/i.test(address)
 }
 
 if (isProduction && (
@@ -27,7 +29,7 @@ export function requireConfiguredAddress(address: string, name: string): `0x${st
 
 export const POLYGON_CHAIN_ID = 137
 export const POLYGON_AMOY_CHAIN_ID = 80002
-export const EXPECTED_CHAIN_ID = Number(configuredNetworkId || 1337)
+export const EXPECTED_CHAIN_ID = Number(configuredNetworkId || (process.env.APP_ENV === "public-readonly" ? 0 : 1337))
 
 export function requireExpectedChain(chainId: number | undefined): void {
   if (chainId !== EXPECTED_CHAIN_ID) {

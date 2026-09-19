@@ -5,7 +5,7 @@ export async function GET(request: Request) {
   const rpcUrl = networkId === "1337" ? process.env.NEXT_PUBLIC_RPC_URL : process.env.POLYGON_RPC_URL
   const configured = Boolean(
     networkId &&
-    (process.env.APP_ENV !== "production" || ["137", "80002"].includes(networkId)) &&
+    (!["production", "public-readonly"].includes(process.env.APP_ENV || "") || ["137", "80002"].includes(networkId)) &&
     /^0x[a-fA-F0-9]{40}$/.test(process.env.NEXT_PUBLIC_GAME_CONTRACT_ADDRESS || "") &&
     !/^0x0{40}$/i.test(process.env.NEXT_PUBLIC_GAME_CONTRACT_ADDRESS || "") &&
     /^0x[a-fA-F0-9]{40}$/.test(process.env.NEXT_PUBLIC_PPL_CONTRACT_ADDRESS || "") &&

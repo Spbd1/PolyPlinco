@@ -28,11 +28,12 @@ an offline or separately controlled operator environment.
 
 | Variable | Scope | Secret? | Required |
 |---|---|---:|---|
-| `APP_ENV` | server/build | no | yes; `private-local` for dry run, `production` for public config |
+| `APP_ENV` | server/build | no | yes; `private-local`, `public-readonly`, or `production` |
 | `NEXT_PUBLIC_NETWORK_ID` | browser/build | no | yes; explicit chain ID |
 | `NEXT_PUBLIC_GAME_CONTRACT_ADDRESS` | browser/build | no | yes; nonzero deployed address |
 | `NEXT_PUBLIC_PPL_CONTRACT_ADDRESS` | browser/build | no | yes; nonzero deployed address |
 | `NEXT_PUBLIC_RPC_URL` | browser/build | usually no | yes for the private local dry run; never embed a secret URL |
+| `NEXT_PUBLIC_PAID_MODE_ENABLED` | browser/build | no | `false` for no-money VPS mode |
 | `POLYGON_RPC_URL` | server runtime | potentially | required for public server reads; never `NEXT_PUBLIC_*` |
 | `BLOCK_SCAN_FROM_BLOCK` | server runtime | no | required for production bounded history |
 | `NEXT_PUBLIC_WC_PROJECT_ID` | browser/build | public identifier | only if wallet connector requires it |
@@ -43,6 +44,11 @@ token must not be placed in one. Production configuration now rejects missing
 or non-public-chain configuration when `APP_ENV=production`; private-local
 requires an explicit local chain configuration rather than silently falling
 back to localhost.
+
+The explicit `public-readonly` mode uses zero contract addresses and
+`NEXT_PUBLIC_PAID_MODE_ENABLED=false`. It serves the landing/demo experience
+and keeps paid hooks and transaction entry disabled; it does not silently
+select localhost or a stale local deployment.
 
 ## Container controls
 
@@ -102,7 +108,8 @@ require it.
 
 Next also emits CSP, anti-clickjacking, MIME-sniffing, referrer, and
 permissions headers. HSTS is restricted to the TLS proxy template; it must not
-be enabled on an HTTP-only private dry run.
+be enabled on an HTTP-only private dry run. The CSP permits the inline scripts
+required by the current Next.js runtime but does not permit `unsafe-eval`.
 
 ## API resource bounds
 
@@ -117,7 +124,11 @@ be enabled on an HTTP-only private dry run.
 The existing middleware and proxy rate limits are defense-in-depth, not a
 distributed security boundary. Broad public launch still requires provider
 timeouts/fallbacks and eventually a reorg-aware indexer. No route accepts a
-caller-selected genesis-to-latest scan.
+caller-selected genesis-to-latest scan. Nginx rate-limits API traffic at
+5 requests/second per source IP with a burst of 10; application middleware
+adds 100 API requests/minute per `X-Real-IP`. Nginx overwrites `X-Real-IP`
+from the socket address, and the application does not use caller-supplied
+`X-Forwarded-For` for its limiter.
 
 ## Failure behavior
 

@@ -54,6 +54,8 @@ docker-compose.override.yml
 # IDEs
 .vscode/
 .idea/
+AGENTS.md
+CLAUDE.md
 *.swp
 *.swo
 *~

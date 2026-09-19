@@ -3,7 +3,8 @@ import { polygon, polygonAmoy } from "viem/chains"
 
 const networkId = process.env.NEXT_PUBLIC_NETWORK_ID
 const isProduction = process.env.NODE_ENV === "production" && process.env.APP_ENV === "production"
-if (isProduction && (!networkId || !["137", "80002"].includes(networkId) || !process.env.POLYGON_RPC_URL)) {
+const isPublicReadonly = process.env.APP_ENV === "public-readonly"
+if ((isProduction || isPublicReadonly) && (!networkId || !["137", "80002"].includes(networkId) || (isProduction && !process.env.POLYGON_RPC_URL))) {
   throw new Error("Production server blockchain configuration is incomplete")
 }
 
