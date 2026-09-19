@@ -10,6 +10,14 @@ async function main() {
   const tokenAddress = await game.pplToken()
   const token = await ethers.getContractAt("PolyPlinkoToken", tokenAddress)
   const balance = await provider.getBalance(GAME_ADDRESS)
+  const houseBankroll = await game.houseBankroll()
+  const lockedBankroll = await game.lockedBankroll()
+  const reserveMatic = await game.reserveMatic()
+  const vaultMatic = await game.vaultMatic()
+  const pendingWithdrawals = await game.totalPendingWithdrawals()
+  const devFeesAccrued = await game.devFeesAccrued()
+  const accountedNative = houseBankroll + reserveMatic + vaultMatic + pendingWithdrawals + devFeesAccrued
+  const freeHouseBankroll = houseBankroll > lockedBankroll ? houseBankroll - lockedBankroll : 0n
   const gameCount = await game.gameIdCounter()
   const pending: Array<Record<string, string>> = []
 
@@ -30,12 +38,15 @@ async function main() {
     contracts: { game: GAME_ADDRESS, token: tokenAddress },
     native: {
       contractBalance: balance.toString(),
-      houseBankroll: (await game.houseBankroll()).toString(),
-      lockedBankroll: (await game.lockedBankroll()).toString(),
-      claimableLiabilities: (await game.totalPendingWithdrawals()).toString(),
-      devFeesAccrued: (await game.devFeesAccrued()).toString(),
-      ammReserve: (await game.reserveMatic()).toString(),
-      vault: (await game.vaultMatic()).toString(),
+      houseBankroll: houseBankroll.toString(),
+      freeHouseBankroll: freeHouseBankroll.toString(),
+      lockedBankroll: lockedBankroll.toString(),
+      claimableLiabilities: pendingWithdrawals.toString(),
+      devFeesAccrued: devFeesAccrued.toString(),
+      ammReserve: reserveMatic.toString(),
+      vault: vaultMatic.toString(),
+      accountedNative: accountedNative.toString(),
+      unclassifiedNativeSurplus: (balance - accountedNative).toString(),
     },
     token: {
       totalSupply: (await token.totalSupply()).toString(),
@@ -51,8 +62,9 @@ async function main() {
       pending,
     },
     reconciliation: {
-      nativeProtectedLeAssets: ((await game.houseBankroll()) + (await game.reserveMatic()) + (await game.vaultMatic()) + (await game.totalPendingWithdrawals()) + (await game.devFeesAccrued()) <= balance),
-      lockedLeHouse: (await game.lockedBankroll()) <= (await game.houseBankroll()),
+      nativeProtectedLeAssets: accountedNative <= balance,
+      nativeAccountingExactOrSurplus: balance >= accountedNative,
+      lockedLeHouse: lockedBankroll <= houseBankroll,
       tokenReserveLeGameBalance: (await game.reserveToken()) <= (await token.balanceOf(GAME_ADDRESS)),
       supplyLeMax: (await token.totalSupply()) <= (await token.MAX_SUPPLY()),
     },

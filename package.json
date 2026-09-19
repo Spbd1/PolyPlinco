@@ -16,6 +16,7 @@
     "abi:check": "node scripts/check-abi.cjs",
     "browser:test": "node scripts/browser-interaction.cjs",
     "economics:rtp": "node hardhat-run.cjs run scripts/rtp-report.ts --network hardhat",
+    "economics:treasury": "node scripts/treasury-exposure-simulation.cjs",
     "gas:report": "node hardhat-run.cjs run scripts/gas-report.ts --network hardhat",
     "start": "next start"
   },
