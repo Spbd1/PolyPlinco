@@ -8,7 +8,10 @@ async function deployFixture() {
     owner.address, await mock.getAddress(), 0, ethers.ZeroHash, 3, 2_000_000, false,
   )
   const gameReceipt = await game.deploymentTransaction()?.wait()
-  await game.seedInitialLiquidityAndBankroll(ethers.parseEther("90000"), { value: ethers.parseEther("100") })
+  // Keep the fixture within the fixed 5% admission cap while retaining the
+  // maximum 256-ball callback workload. A 1,000-unit seed leaves 500 free
+  // house units; 0.006/ball produces a liability below the 25-unit cap.
+  await game.seedInitialLiquidityAndBankroll(ethers.parseEther("90000"), { value: ethers.parseEther("1000") })
   return { owner, player, mock, game, deployReceipt, gameReceipt }
 }
 
@@ -21,7 +24,7 @@ async function measureCallback(balls: number, postMining: boolean, seed: bigint)
       ethers.zeroPadValue(ethers.toBeHex(await game.MINING_SUPPLY()), 32),
     ])
   }
-  const betPerBall = ethers.parseEther("0.01")
+  const betPerBall = ethers.parseEther("0.006")
   const tx = await game.connect(player).playPlinko(
     { rows: 16, balls, risk: 1, betPerBall },
     { value: betPerBall * BigInt(balls) },

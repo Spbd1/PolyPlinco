@@ -123,7 +123,7 @@ describe("PolyPlinkoGame", () => {
 
   describe("Loss Mining", () => {
     it("Should mint tokens on net loss (Tier 1)", async () => {
-      const betPerBall = ethers.parseEther("1")
+      const betPerBall = ethers.parseEther("0.1")
       const balls = 1
       const totalBet = betPerBall * BigInt(balls)
 
@@ -156,9 +156,9 @@ describe("PolyPlinkoGame", () => {
           rows: 16,
           balls: 10,
           risk: 1,
-          betPerBall: ethers.parseEther("0.1"),
+          betPerBall: ethers.parseEther("0.01"),
         },
-        { value: ethers.parseEther("1") },
+        { value: ethers.parseEther("0.1") },
       )
 
       const emittedAfter = await game.miningEmitted()
@@ -291,9 +291,9 @@ describe("PolyPlinkoGame", () => {
           rows: 16,
           balls: 10,
           risk: 1,
-          betPerBall: ethers.parseEther("0.1"),
+          betPerBall: ethers.parseEther("0.01"),
         },
-        { value: ethers.parseEther("1") },
+        { value: ethers.parseEther("0.1") },
       )
 
       const availableBankroll = await game.getAvailableBankroll()

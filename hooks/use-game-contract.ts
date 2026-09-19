@@ -29,9 +29,11 @@ export function usePlayPlinko() {
       })
     } catch (err) {
       console.error("[v0] Play Plinko error:", err)
+      const message = err instanceof Error ? err.message : error?.message || "Failed to send transaction"
+      const riskLimited = message.includes("Game exceeds bankroll risk limit")
       toast({
-        title: "Transaction Failed",
-        description: err instanceof Error ? err.message : error?.message || "Failed to send transaction",
+        title: riskLimited ? "Bet Exceeds Risk Limit" : "Transaction Failed",
+        description: riskLimited ? "This bet exceeds the current bankroll risk limit." : message,
         variant: "destructive",
       })
     }

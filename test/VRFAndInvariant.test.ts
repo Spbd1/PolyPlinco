@@ -179,6 +179,77 @@ describe("VRF lifecycle and invariants", function () {
     expect(await token.totalSupply()).to.be.lte(await token.MAX_SUPPLY())
   })
 
+  it("applies the fixed 5% maximum-liability cap to new games", async () => {
+    const { game, player, mock } = await deploy()
+    const free = await game.getAvailableBankroll()
+    const cap = (free * 500n) / 10000n
+    expect(free).to.equal(ethers.parseEther("50"))
+    expect(cap).to.equal(ethers.parseEther("2.5"))
+    expect(await game.MAX_GAME_LIABILITY_BPS()).to.equal(500n)
+
+    // A small valid game remains available at the 50-unit free-bankroll
+    // starting point; the current maximum-risk shape is rejected by the
+    // additional risk cap before any state is changed.
+    await createGame(game, player)
+    await ethers.provider.send("evm_increaseTime", [2])
+    await ethers.provider.send("evm_mine", [])
+    await expect(game.connect(player).playPlinko(
+      { rows: 16, balls: 256, risk: 2, betPerBall: ethers.parseEther("0.001") },
+      { value: ethers.parseEther("0.256") },
+    )).to.be.revertedWith("Game exceeds bankroll risk limit")
+
+    // The cap is integer floor arithmetic. Values around the first non-zero
+    // boundaries are explicitly characterized: floor(20 * 5%) = 1 and
+    // floor(40 * 5%) = 2, with one wei below each boundary unchanged.
+    expect((19n * 500n) / 10000n).to.equal(0n)
+    expect((20n * 500n) / 10000n).to.equal(1n)
+    expect((39n * 500n) / 10000n).to.equal(1n)
+    expect((40n * 500n) / 10000n).to.equal(2n)
+
+    // Complete the accepted game so this test also confirms the cap does not
+    // interfere with ordinary authenticated settlement.
+    const requests = await game.getPlayerGames(player.address)
+    const pending = await game.games(requests[0])
+    await mock.fulfill(pending.requestId, 1)
+  })
+
+  it("shrinks the 5% allowance as concurrent liabilities are locked", async () => {
+    const { game, mock } = await deploy()
+    const signers = await ethers.getSigners()
+    const config = { rows: 16, balls: 128, risk: 2, betPerBall: ethers.parseEther("0.001") }
+    const value = config.betPerBall * 128n
+    const accepted: Array<{ requestId: bigint; gameId: bigint }> = []
+    let rejected = 0
+    let previousFree = await game.getAvailableBankroll()
+
+    for (let i = 0; i < 20; i++) {
+      await ethers.provider.send("evm_increaseTime", [2])
+      await ethers.provider.send("evm_mine", [])
+      const before = await game.getAvailableBankroll()
+      expect(before).to.be.lte(previousFree)
+      try {
+        const tx = await game.connect(signers[(i % 10) + 1]).playPlinko(config, { value })
+        const receipt = await tx.wait()
+        const requested = receipt.logs
+          .map((log: any) => { try { return game.interface.parseLog(log) } catch { return null } })
+          .find((event: any) => event?.name === "GameRequested")
+        accepted.push({ requestId: requested.args.requestId, gameId: requested.args.gameId })
+        const after = await game.getAvailableBankroll()
+        expect(after).to.be.lt(before)
+        previousFree = after
+      } catch (error) {
+        expect(String(error)).to.contain("Game exceeds bankroll risk limit")
+        rejected++
+        expect(await game.getAvailableBankroll()).to.equal(before)
+      }
+    }
+
+    expect(accepted.length).to.be.greaterThan(0)
+    expect(rejected).to.be.greaterThan(0)
+    expect(await game.lockedBankroll()).to.be.lte(await game.houseBankroll())
+    for (const request of accepted) await mock.fulfill(request.requestId, request.gameId + 1n)
+  })
+
   it("supports simultaneous requests fulfilled out of order", async () => {
     const { game, player, other, mock } = await deploy()
     const a = await createGame(game, player)

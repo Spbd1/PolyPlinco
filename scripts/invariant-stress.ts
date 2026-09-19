@@ -69,7 +69,9 @@ async function main() {
       tx = await game.connect(player).playPlinko({ rows: row, balls: ballCount, risk, betPerBall }, { value: betPerBall * BigInt(ballCount) })
     } catch (error) {
       const message = String(error)
-      if (!message.includes("reverted with reason string 'Insufficient available bankroll'")) throw error
+      const expectedBankrollRejection = message.includes("reverted with reason string 'Insufficient available bankroll'")
+      const expectedRiskRejection = message.includes("reverted with reason string 'Game exceeds bankroll risk limit'")
+      if (!expectedBankrollRejection && !expectedRiskRejection) throw error
       expectedRejectedGames++
       const stateAfterAttempt = await captureAttemptState()
       if (stateAfterAttempt.some((value, index) => value !== stateBeforeAttempt[index])) {

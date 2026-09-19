@@ -91,6 +91,7 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
     // Security limits
     uint256 public constant MIN_BET_PER_BALL = 0.001 ether;
     uint256 public constant MAX_BET_PER_BALL = 10 ether;
+    uint256 public constant MAX_GAME_LIABILITY_BPS = 500; // 5% of current free house bankroll
     uint256 public maxBetTotal = 1000 ether; // Adjustable by owner
     
     // ============================================
@@ -420,10 +421,12 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         // Calculate max possible payout
         uint256 maxPayout = _calculateMaxPayout(config);
         
-        uint256 availableBankroll = houseBankroll > lockedBankroll 
-            ? houseBankroll - lockedBankroll 
-            : 0;
-        require(availableBankroll >= maxPayout, "Insufficient available bankroll");
+        uint256 freeHouseBankroll = _freeHouseBankroll();
+        require(freeHouseBankroll >= maxPayout, "Insufficient available bankroll");
+        require(
+            maxPayout <= (freeHouseBankroll * MAX_GAME_LIABILITY_BPS) / BPS_DENOMINATOR,
+            "Game exceeds bankroll risk limit"
+        );
         
         // Take 1% dev fee (Checks-Effects-Interactions pattern)
         uint256 devFee = totalBet / 100;
@@ -560,6 +563,10 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         
         return (config.betPerBall * maxMultiplier * config.balls) / MULTIPLIER_SCALE;
     }
+
+    function _freeHouseBankroll() private view returns (uint256) {
+        return houseBankroll > lockedBankroll ? houseBankroll - lockedBankroll : 0;
+    }
     
     function _requestRandomness() private returns (uint256) {
         if (localMode) return ++nonce;
@@ -680,7 +687,7 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
 
     function getPlayerGames(address player) external view returns (uint256[] memory) { return playerGames[player]; }
     function getAvailableBankroll() external view returns (uint256) {
-        return houseBankroll > lockedBankroll ? houseBankroll - lockedBankroll : 0;
+        return _freeHouseBankroll();
     }
 
     function getLossMiningTierInfo() external view returns (uint256 tier, uint256 pricePerToken, uint256 tokensLeftInTier) {
@@ -1011,7 +1018,7 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
      * @notice Withdraw profits (only available bankroll, not locked)
      */
     function withdrawProfits(uint256 amount) external onlyOwner {
-        uint256 available = houseBankroll > lockedBankroll ? houseBankroll - lockedBankroll : 0;
+        uint256 available = _freeHouseBankroll();
         require(amount <= available, "Insufficient available bankroll");
         houseBankroll -= amount;
         payable(owner()).transfer(amount);

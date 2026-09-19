@@ -18,6 +18,8 @@ const DEV_FEE_BPS = 100
 const ROWS = 16
 const BALLS = 256
 const RISK = 2 // High
+const ORDINARY_BALLS = 1
+const ORDINARY_BET_PER_BALL = 0.001
 const SEEDS = [0x5eedc0de, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 const STARTS = [50, 100, 250, 500, 1_000]
 const CAPS = [2, 5, 10, 20]
@@ -103,12 +105,13 @@ function pendingBurst(start, capPercent) {
 
 function clusteredWins(start, capPercent) {
   const state = fresh(start)
-  const liability = maxLiabilityForBet(0.01)
   let wins = 0
-  while (admit(state, liability, 0.01, capPercent)) {
+  while (wins < 100) {
+    const betPerBall = maxBetAtFree(state.free, capPercent)
+    const liability = maxLiabilityForBet(betPerBall)
+    if (!admit(state, liability, betPerBall, capPercent)) break
     settle(state, liability, liability)
     wins += 1
-    if (wins >= 100) break
   }
   return { wins, rejected: state.rejected, minimumFree: state.minFree, drawdown: state.maxDrawdown }
 }
@@ -116,10 +119,10 @@ function clusteredWins(start, capPercent) {
 function ordinaryGames(start, capPercent, seed) {
   const state = fresh(start)
   let rng = seed >>> 0
-  const liability = maxLiabilityForBet(0.01)
+  const liability = ORDINARY_BET_PER_BALL * ORDINARY_BALLS * maxMultiplier
   for (let i = 0; i < 10_000; i += 1) {
     rng = xorshift(rng)
-    if (!admit(state, liability, 0.01, capPercent)) continue
+    if (!admit(state, liability, ORDINARY_BET_PER_BALL, capPercent)) continue
     // A deliberately conservative house-edge model: 10% expected edge,
     // with a bounded outcome mix sufficient for treasury drawdown comparison.
     const win = (rng % 10) === 0
@@ -136,7 +139,7 @@ function maxBetAtFree(free, capPercent) {
 const output = {
   model: {
     units: "normalized native units; no live USD price",
-    config: { rows: ROWS, balls: BALLS, risk: "high", maxMultiplier, devFeePercent: 1 },
+    config: { rows: ROWS, balls: BALLS, risk: "high", maxMultiplier, ordinaryBalls: ORDINARY_BALLS, ordinaryBetPerBall: ORDINARY_BET_PER_BALL, devFeePercent: 1 },
     formula: "freeHouse = max(houseBankroll - lockedBankroll, 0); admission requires maxLiability <= freeHouse and, when selected, maxLiability <= freeHouse * capPercent / 100",
   },
   starts: {},

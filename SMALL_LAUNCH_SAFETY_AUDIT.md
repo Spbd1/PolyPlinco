@@ -29,9 +29,10 @@ exposure cap would reduce the corresponding maximum bet per ball to about
 `0.00242567` units. A cap is not required to make the existing admission rule
 solvent, but it materially limits variance and availability.
 
-**NOT READY:** A small real-money launch should not be treated as ready until
-an owner-approved exposure policy, production VRF readiness, key custody,
-server hardening, and specialist legal/compliance review are complete.
+**OWNER DECISION RECORDED:** The initial small real-money alpha uses a fixed
+5% maximum game-liability cap. A small real-money launch should not be
+treated as ready until production VRF readiness, key custody, server
+hardening, and specialist legal/compliance review are complete.
 
 ## 1. Accounting map
 
@@ -115,13 +116,25 @@ maximum-liability request (`41.225728` units):
 These results are from `scripts/treasury-exposure-simulation.cjs` and use
 normalized native units, not a live USD price.
 
-## 3. Candidate treasury exposure caps
+## 3. Owner-approved 5% treasury exposure cap
 
-The candidate policy is an additional admission condition:
+The owner-approved alpha policy is an additional admission condition:
 
 ```text
 maxPayout <= freeHouseBankroll * capPercent / 100
 ```
+
+The deployed alpha value is fixed in the contract as:
+
+```text
+MAX_GAME_LIABILITY_BPS = 500
+BPS_DENOMINATOR = 10000
+```
+
+This is a conservative initial-alpha risk parameter based on maximum
+possible payout, not win probability. It dynamically shrinks as pending
+liabilities consume free bankroll. It does not eliminate treasury variance or
+guarantee solvency against administrative key compromise.
 
 The cap applies to each new game's maximum liability, while the existing
 `lockedBankroll` check still protects aggregate concurrent exposure.
@@ -141,11 +154,9 @@ the protocol's current minimum bet for this worst-case configuration. At a
 100-unit free bankroll, 5% and 10% remain above the minimum, but impose a
 large reduction from the current 0.01-per-ball maximum.
 
-**RECOMMENDATION — OWNER DECISION REQUIRED:** Evaluate a 5–10% range for a
-closed alpha, with 10% treated as an upper bound rather than a guarantee of
-availability. Do not implement a cap until the owner selects the value and
-defines whether it is immutable, owner-configurable, or operationally
-enforced through `maxBetTotal`.
+**IMPLEMENTED / VERIFIED:** The owner selected the 5% value for the initial
+alpha. The contract has no mutable setter for this percentage. The other
+values remain comparative analysis only and are not active protocol settings.
 
 ## 4. Small-treasury scenarios
 
@@ -159,22 +170,28 @@ maximum-liability winner attempts across seeds:
 ```
 
 The current rule preserves maximum availability while admitting only as many
-maximum-liability games as free funds support. A 10% cap sharply reduces the
-maximum permitted bet but keeps the single-event drawdown bounded by 10% of
-the then-free bankroll. A 20% cap is more available but leaves substantially
-more variance. A 2% cap is safest mechanically but often conflicts with the
-current minimum bet at a small treasury.
+maximum-liability games as free funds support. The selected 5% cap sharply
+reduces the maximum permitted bet while bounding each newly accepted maximum
+liability to 5% of the then-current free bankroll. A 2% cap is safer
+mechanically but often conflicts with the current minimum bet at a small
+treasury; 10% and 20% provide more availability with more variance.
 
 The deterministic output digest is recorded by the script and must be used
 to detect accidental model drift. Temporary JSON output belongs under `/tmp`
 and is not a repository artifact.
+
+The current 5% model digest is:
+
+```text
+255c1bef23b9bd9f1808488ebf4d33e99c1bd75bc7fa6dacde90b2c3384bbf8a
+```
 
 ### Pending-burst comparison
 
 **MODELLED:** Number accepted from 20 identical maximum-liability requests
 before fulfillment:
 
-| Free house start | Current | 2% cap | 5% cap | 10% cap | 20% cap |
+| Free house start | Current | 2% cap | 5% alpha cap | 10% cap | 20% cap |
 |---:|---:|---:|---:|---:|---:|
 | 50 | 1 | 0 | 0 | 0 | 0 |
 | 100 | 2 | 0 | 0 | 0 | 0 |
@@ -185,6 +202,13 @@ before fulfillment:
 This table is intentionally a worst-case request shape, not a forecast of
 normal player activity. It demonstrates that the cap is an availability and
 variance control layered on top of the existing aggregate lock.
+
+**MODELLED:** When each game is sized to the current 5% maximum rather than
+using the fixed 0.01/256 request, 100 consecutive forced maximum wins reduce
+free bankroll to approximately 0.82, 2.04, 4.09, and 8.18 units from starts
+of 100, 250, 500, and 1,000 respectively. This is why the cap must not be
+described as eliminating drawdown or risk of ruin; it limits each new game's
+liability but does not guarantee recovery from a long adverse sequence.
 
 ## 5. Developer fee
 
