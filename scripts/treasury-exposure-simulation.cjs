@@ -96,10 +96,10 @@ function fresh(start) {
   return state
 }
 
-function pendingBurst(start, capPercent) {
+function pendingBurst(start, capPercent, attempts) {
   const state = fresh(start)
   const liability = maxLiabilityForBet(0.01)
-  for (let i = 0; i < 20; i += 1) admit(state, liability, 0.01, capPercent)
+  for (let i = 0; i < attempts; i += 1) admit(state, liability, 0.01, capPercent)
   return { accepted: state.accepted, rejected: state.rejected, locked: state.locked, free: state.free }
 }
 
@@ -152,7 +152,9 @@ for (const start of STARTS) {
     output.starts[start][cap === 0 ? "current" : `${cap}%`] = {
       capPercent: cap,
       maxBetPerBall: maxBetAtFree(start, cap),
-      pending20: pendingBurst(start, cap),
+      pending20: pendingBurst(start, cap, 20),
+      pending50: pendingBurst(start, cap, 50),
+      pending100: pendingBurst(start, cap, 100),
       clusteredMaximumWins: clusteredWins(start, cap),
       ordinary10k: {
         acceptedMean: runs.reduce((sum, r) => sum + r.accepted, 0) / runs.length,

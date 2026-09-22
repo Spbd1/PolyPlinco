@@ -50,7 +50,11 @@ async function measureCallback(balls: number, postMining: boolean, seed: bigint)
 }
 
 async function main() {
-  const ballCounts = [1, 32, 128, 256]
+  // The report deploys an isolated fixture for each ball count. Give the
+  // ephemeral Hardhat deployer enough test-only balance for all fixtures.
+  const [deployer] = await ethers.getSigners()
+  await ethers.provider.send("hardhat_setBalance", [deployer.address, ethers.toBeHex(ethers.parseEther("100000"))])
+  const ballCounts = [1, 2, 5, 10, 25, 32, 50, 100, 128, 256]
   const regular = []
   for (const balls of ballCounts) regular.push(await measureCallback(balls, false, 1n))
 

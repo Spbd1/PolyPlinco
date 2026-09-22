@@ -19,6 +19,7 @@
     "economics:rtp": "node hardhat-run.cjs run scripts/rtp-report.ts --network hardhat",
     "economics:treasury": "node scripts/treasury-exposure-simulation.cjs",
     "gas:report": "node hardhat-run.cjs run scripts/gas-report.ts --network hardhat",
+    "release:verify": "node scripts/release-verify.cjs",
     "start": "next start"
   },
   "dependencies": {
