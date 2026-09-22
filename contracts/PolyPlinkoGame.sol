@@ -665,8 +665,13 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
         uint256 netLoss
     ) private returns (uint256) {
         if (miningEmitted < MINING_SUPPLY) {
-            // Mining phase: mint new tokens
-            return _mintLossMiningTokens(player, gameId, netLoss);
+            // Mining phase: mint new tokens. If the final tier is exhausted,
+            // carry only whole native wei into the post-mining path.
+            (uint256 tokensMinted, uint256 remainingLossX18) = _mintLossMiningTokens(player, gameId, netLoss);
+            if (miningEmitted >= MINING_SUPPLY && remainingLossX18 >= 1e18) {
+                tokensMinted += _buybackToPlayer(player, gameId, remainingLossX18 / 1e18);
+            }
+            return tokensMinted;
         } else {
             // Post-mining: buy back 70% of net loss, burn 30% of purchased
             // PPL, and send the remaining 70% to the player.
@@ -746,46 +751,49 @@ contract PolyPlinkoGame is Ownable, ReentrancyGuard {
      * @param player Player address
      * @param gameId Game ID
      * @param netLoss Net loss in MATIC
-     * @return tokensMinted Total tokens minted
+     * @return totalMinted Total tokens minted
+     * @return remainingLossX18 Remaining loss in native wei scaled by 1e18
      */
     function _mintLossMiningTokens(
         address player,
         uint256 gameId,
         uint256 netLoss
-    ) private returns (uint256) {
-        uint256 remainingLoss = netLoss;
-        uint256 totalMinted = 0;
+    ) private returns (uint256 totalMinted, uint256 remainingLossX18) {
+        // Loss is retained at 18 extra decimal places across every tier.
+        // This avoids converting minted token base units back into native wei,
+        // which can round to zero and leave a non-terminating loop.
+        remainingLossX18 = netLoss * 1e18;
+        totalMinted = 0;
         uint256 startTier = miningEmitted / TOKENS_PER_TIER;
-        
-        while (remainingLoss > 0 && miningEmitted < MINING_SUPPLY) {
+
+        // At most one iteration is needed per tier. The explicit bound is
+        // defense-in-depth in addition to the strict loss/emission progress.
+        for (uint256 iterations = 0; iterations < NUM_TIERS && remainingLossX18 > 0 && miningEmitted < MINING_SUPPLY; iterations++) {
             uint256 tier = miningEmitted / TOKENS_PER_TIER; // 0..8
             require(tier < NUM_TIERS, "Mining complete");
             
             uint256 pricePerToken = PRICE_BASE + (tier * PRICE_STEP); // 0.02 + tier*0.01
             uint256 tokensLeftInTier = TOKENS_PER_TIER - (miningEmitted % TOKENS_PER_TIER);
-            // remainingLoss and pricePerToken are native wei; convert the
-            // whole-token result into ERC-20 base units exactly once.
-            uint256 maxTokensFromLoss = (remainingLoss * 1e18) / pricePerToken;
-            
+            uint256 maxTokensFromLoss = remainingLossX18 / pricePerToken;
             uint256 tokensToMint = maxTokensFromLoss < tokensLeftInTier 
                 ? maxTokensFromLoss 
                 : tokensLeftInTier;
-            
+
             if (tokensToMint == 0) break;
-            
-            uint256 lossConsumed = (tokensToMint * pricePerToken) / 1e18;
-            
+
+            uint256 costX18 = tokensToMint * pricePerToken;
+            require(costX18 > 0 && costX18 <= remainingLossX18, "Invalid mining cost");
             miningEmitted += tokensToMint;
-            remainingLoss -= lossConsumed;
+            remainingLossX18 -= costX18;
             totalMinted += tokensToMint;
         }
-        
+
         if (totalMinted > 0) {
             pplToken.mintFromLossMining(player, totalMinted);
             emit TokensMintedFromLoss(player, gameId, netLoss, totalMinted, startTier);
         }
-        
-        return totalMinted;
+
+        return (totalMinted, remainingLossX18);
     }
     
     /**
