@@ -42,7 +42,7 @@ export default function HowToPlayPage() {
             </h2>
             <div className="space-y-4 text-slate-300">
               <p>
-                PolyPlinko is a provably fair Plinko game built on Polygon PoS. No registration required – just connect
+                PolyPlinko is a Plinko game designed for Polygon PoS. No registration required – just connect
                 your wallet and start playing!
               </p>
               <ol className="list-decimal list-inside space-y-2 ml-4">
@@ -120,25 +120,25 @@ export default function HowToPlayPage() {
             </h2>
             <div className="space-y-4 text-slate-300">
               <p>
-                PolyPlinko has a <span className="text-purple-400 font-semibold">10% house edge</span>, meaning the
-                expected payout is 90% of your bet over time.
+                PolyPlinko has configuration-dependent RTP of approximately <span className="text-purple-400 font-semibold">90.03%–90.48%</span>,
+                corresponding to a gross expected house edge of approximately 9.52%–9.97%.
               </p>
               <div className="bg-slate-800/50 p-4 rounded-lg space-y-2">
-                <p className="font-semibold text-white">Where does the 10% go?</p>
+                <p className="font-semibold text-white">How is the expected margin accounted for?</p>
                 <ul className="list-disc list-inside space-y-1 ml-4">
                   <li>
-                    <span className="text-purple-400 font-semibold">1%</span> - Dev fee (supports development and
-                    operations)
+                    <span className="text-purple-400 font-semibold">1%</span> - Developer fee, accrued as a protected
+                    pull-based liability
                   </li>
                   <li>
-                    <span className="text-purple-400 font-semibold">~9%</span> - House bankroll (ensures payouts and
-                    sustainability)
+                    <span className="text-purple-400 font-semibold">Remaining margin</span> - House accounting and
+                    protected-liability coverage; this does not guarantee profit or uninterrupted availability
                   </li>
                 </ul>
               </div>
               <p>
-                Multipliers are calculated using binomial probability distributions and scaled to maintain exactly 90%
-                RTP (Return to Player) for each configuration.
+                Multipliers are calculated using binomial probability distributions and scaled to the current
+                configuration-dependent RTP range.
               </p>
             </div>
           </section>
@@ -154,8 +154,8 @@ export default function HowToPlayPage() {
                 verifiable randomness; local development uses the authenticated mock coordinator. This means:
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4">
-                <li>Results cannot be predicted or manipulated by anyone (including us!)</li>
-                <li>Each game gets a unique random seed from Chainlink's decentralized oracle network</li>
+                <li>Paid production is intended to use authenticated Chainlink VRF; local development uses a mock coordinator.</li>
+                <li>Each settled game records its random seed and settlement on-chain.</li>
                 <li>You can verify any game's fairness by checking the VRF request on-chain</li>
                 <li>
                   Ball outcomes are deterministically derived from the seed using keccak256 hashing – same seed always
@@ -176,7 +176,7 @@ export default function HowToPlayPage() {
             <div className="space-y-4 text-slate-300">
               <p>
                 PolyPlinko Token (PPL) is the native ERC-20 token with a{" "}
-                <span className="text-purple-400 font-semibold">fixed supply of 1,000,000 tokens</span>.
+                <span className="text-purple-400 font-semibold">maximum supply cap of 1,000,000 tokens</span>; supply begins at 100,000 PPL, can rise through capped loss-mining, and can later decline through burns.
               </p>
 
               <div>

@@ -611,7 +611,7 @@ export default function WhitepaperPage() {
                   <h3 className="text-xl font-semibold text-white mt-8">Post-Mining Behavior</h3>
                   <p>Once all 900,000 mining tokens have been emitted:</p>
                   <ul className="list-disc list-inside space-y-2 ml-4">
-                    <li>No new PPL will ever be minted (supply capped at 1,000,000 PPL).</li>
+                    <li>No additional mining PPL can be minted after the 900,000-PPL mining allocation is exhausted; the 1,000,000-PPL value is a maximum supply cap.</li>
                     <li>Loss-mining transitions to a buyback mode, using existing supply from the AMM.</li>
                   </ul>
 

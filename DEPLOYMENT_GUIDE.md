@@ -42,7 +42,7 @@ DEV_ADDRESS=0xYourDevFeeReceiverAddress  # Separate from contract address
 
 # Initial Liquidity (for seeding)
 INITIAL_MATIC_LIQUIDITY=1000
-INITIAL_TOKEN_LIQUIDITY=100000
+INITIAL_TOKEN_LIQUIDITY=90000
 \`\`\`
 
 **Important Notes:**

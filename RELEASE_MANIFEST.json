@@ -1,0 +1,58 @@
+{
+  "manifestType": "polyplinco-release-audit",
+  "manifestVersion": 1,
+  "auditDate": "2026-09-22",
+  "sourceCommitAtAuditStart": "98776bbf98885321685345ba81973e57dd9c2b1b",
+  "appVersion": "1.0.0",
+  "nodeRequirement": "22.x",
+  "packageManager": "pnpm@9.15.0",
+  "packageJsonSha256": "cbd29ba086399863ce9615de4c1924e0f887b0de337b6332c70e99b375872121",
+  "solidity": {
+    "compiler": "0.8.20",
+    "optimizer": { "enabled": true, "runs": 200 },
+    "gameSourceSha256": "6f57d2730b326f555c6bbea1e69ff824f71306524e29ca86a7f13783ee2af1b9",
+    "tokenSourceSha256": "6e3d91d95aa826145ae8cad16d11feee35bf56afb0f087bdec1c9e6e0597ff1d"
+  },
+  "economicConstants": {
+    "maxSupplyPpl": "1000000",
+    "genesisPpl": "100000",
+    "developerPpl": "10000",
+    "gameAllocationPpl": "90000",
+    "miningAllocationPpl": "900000",
+    "developerFeePercent": 1,
+    "nativeBuybackPercent": 70,
+    "nativeRetainedPercent": 30,
+    "postMiningBurnBps": 3000,
+    "postMiningPlayerBps": 7000,
+    "maxGameLiabilityBps": 500,
+    "swapFeePercent": 5,
+    "maxBalls": 256,
+    "callbackGasLimit": 2000000
+  },
+  "validation": {
+    "contractTests": 33,
+    "abiEntriesChecked": 11,
+    "rtpConfigurations": 75,
+    "trajectoryBuckets": "all supported rows and buckets",
+    "publicDeployment": false,
+    "realMoneyFunding": false,
+    "externalAudit": false
+  },
+  "releaseVerification": {
+    "command": "npm run release:verify",
+    "status": "passed",
+    "dockerImageBuiltInThisAudit": false,
+    "dockerBuildEnvironmentNote": "legacy builder stalled at dependency copy; rebuild with CI/buildx before deployment"
+  },
+  "docker": {
+    "dockerfile": "Dockerfile",
+    "runtimeBase": "node:22-bookworm-slim",
+    "proxyBase": "nginx:1.27-alpine"
+  },
+  "frontendBuild": {
+    "buildIdSha256": "a21c3c5d3c983c8ea68462a723d9f59b6a0245d05cde7833e0620c8c8c1b07a1",
+    "standaloneServerSha256": "c1e47a81c8d2f245161d8a74fcf7f5b93169ae072103803649e272d4a8d6866e"
+  },
+  "secretsIncluded": false,
+  "releaseCommit": "df555f7"
+}

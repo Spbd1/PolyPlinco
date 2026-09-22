@@ -24,10 +24,12 @@ A decentralized Plinko gambling dApp with loss-mining rewards and deflationary t
 - **Non-overlapping multipliers** - Clear slot labels that don't topple
 
 ### 🪙 PPL Token Economics
-- Fixed supply: 1,000,000 PPL
+- Maximum supply cap: 1,000,000 PPL; supply begins at 100,000 PPL, may increase
+  through capped loss-mining, and can decline through post-mining and swap burns.
 - Loss-mining: Earn tokens from net losses
 - 9 tiers: 0.02 → 0.10 MATIC per token
-- Post-mining: 70% buyback to losers, 30% retained by the house
+- Post-mining native flow: 70% of positive net loss buys PPL; 30% is retained.
+  Of the purchased PPL, 30% is burned and 70% is sent to the player.
 - 10k PPL dev allocation (1%)
 
 ### 💱 AMM Swap with Deflation
@@ -180,7 +182,7 @@ npm run dev
 
 ### House Edge Calculation
 - Expected payout: 90% of total bet
-- Dev fee: 1% of total bet (immediate transfer)
+- Dev fee: 1% of total bet, accrued as a protected pull-based liability
 - Net house edge: ~10% (1% dev + ~9% bankroll)
 
 ### Multipliers

@@ -5,7 +5,9 @@ async function main() {
 
   const gameAddress = process.env.NEXT_PUBLIC_GAME_CONTRACT_ADDRESS
   const initialMaticLiquidity = process.env.INITIAL_MATIC_LIQUIDITY || "1000"
-  const initialTokenLiquidity = process.env.INITIAL_TOKEN_LIQUIDITY || "100000"
+  // The constructor mints 90,000 PPL to the game contract for the initial
+  // game/protocol allocation. Do not default above that balance.
+  const initialTokenLiquidity = process.env.INITIAL_TOKEN_LIQUIDITY || "90000"
 
   if (!gameAddress) {
     console.error("Game contract address not found")
