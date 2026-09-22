@@ -334,7 +334,7 @@ export default function WhitepaperPage() {
                   </ul>
 
                   <Card className="mt-6 p-6 bg-green-900/10 border-green-700/50">
-                    <h4 className="font-semibold text-green-300 mb-2">Provably Fair Guarantee</h4>
+                    <h4 className="font-semibold text-green-300 mb-2">Authenticated Randomness & Settlement</h4>
                     <p className="text-sm text-slate-400">
                       The authoritative paid result is stored and settled on-chain from the coordinator response, and
                       the deterministic result mapping can be recomputed from the stored seed. This describes the

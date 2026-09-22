@@ -150,13 +150,14 @@ export default function HowToPlayPage() {
             </h2>
             <div className="space-y-4 text-slate-300">
               <p>
-                Paid production games use <span className="text-purple-400 font-semibold">Chainlink VRF v2.5</span> for
-                verifiable randomness; local development uses the authenticated mock coordinator. This means:
+                The intended paid-production design uses <span className="text-purple-400 font-semibold">Chainlink VRF v2.5</span>
+                for authenticated randomness; local development uses the authenticated mock coordinator. Public-chain
+                Chainlink execution has not yet been validated here. This means:
               </p>
               <ul className="list-disc list-inside space-y-2 ml-4">
                 <li>Paid production is intended to use authenticated Chainlink VRF; local development uses a mock coordinator.</li>
                 <li>Each settled game records its random seed and settlement on-chain.</li>
-                <li>You can verify any game's fairness by checking the VRF request on-chain</li>
+                <li>Once deployed and fulfilled on the target chain, the VRF request and settlement can be checked on-chain.</li>
                 <li>
                   Ball outcomes are deterministically derived from the seed using keccak256 hashing – same seed always
                   produces same result
@@ -226,7 +227,7 @@ export default function HowToPlayPage() {
                     <li>
                       <span className="text-green-300 font-semibold">70% of the purchased PPL</span> is sent to you
                     </li>
-                    <li><span className="text-slate-400">30% of your net loss</span> remains with the protocol</li>
+                    <li><span className="text-slate-400">30% of applicable positive net loss</span> remains with the protocol</li>
                     <li>These are two separate splits: native funds and purchased PPL.</li>
                   </ul>
                 </div>
@@ -240,7 +241,7 @@ export default function HowToPlayPage() {
                     <span className="font-semibold text-purple-400">900,000 PPL (90%)</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-slate-800/50 rounded-lg">
-                    <span>Vault & AMM Liquidity</span>
+                    <span>Game/Protocol Allocation</span>
                     <span className="font-semibold text-blue-400">90,000 PPL (9%)</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-slate-800/50 rounded-lg">

@@ -28,8 +28,9 @@ A decentralized Plinko gambling dApp with loss-mining rewards and deflationary t
   through capped loss-mining, and can decline through post-mining and swap burns.
 - Loss-mining: Earn tokens from net losses
 - 9 tiers: 0.02 → 0.10 MATIC per token
-- Post-mining native flow: 70% of positive net loss buys PPL; 30% is retained.
-  Of the purchased PPL, 30% is burned and 70% is sent to the player.
+- Post-mining native flow: 70% of applicable positive net loss buys PPL; 30% is
+  retained in house accounting. Separately, 30% of purchased PPL is permanently
+  burned and 70% of purchased PPL is sent to the player.
 - 10k PPL dev allocation (1%)
 
 ### 💱 AMM Swap with Deflation
@@ -210,8 +211,10 @@ All multipliers are scaled to achieve 90% RTP.
 | 9    | 800k-900k     | 0.10           |
 
 **Post-Mining (after 900k emitted)**:
-- 70% of net losses → automatic PPL buyback sent to player
-- 30% of net losses → retained by the house
+- Native side: 70% of applicable positive net loss → automatic PPL buyback
+- Native side: 30% → retained by the house
+- Purchased-PPL side: 30% → real supply-reducing burn
+- Purchased-PPL side: 70% → player
 
 ### AMM Formula
 Standard constant-product: `k = reserveMatic * reserveToken`

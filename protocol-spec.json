@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "1.0.0",
+  "status": "reviewed-non-secret-specification",
+  "token": {
+    "name": "PolyPlinko Token",
+    "symbol": "PPL",
+    "decimals": 18,
+    "maxSupply": "1000000000000000000000000",
+    "initialMint": "100000000000000000000000",
+    "developerAllocation": "10000000000000000000000",
+    "gameAllocation": "90000000000000000000000",
+    "miningAllocation": "900000000000000000000000"
+  },
+  "mining": {
+    "tierCount": 9,
+    "tierCapacity": "100000000000000000000000",
+    "lossCostPerPplNative": ["0.02", "0.03", "0.04", "0.05", "0.06", "0.07", "0.08", "0.09", "0.10"]
+  },
+  "game": {
+    "minRows": 8,
+    "maxRows": 32,
+    "minBalls": 1,
+    "maxBalls": 256,
+    "riskLevels": ["Low", "Medium", "High"],
+    "minBetPerBallNative": "0.001",
+    "maxBetPerBallNative": "10",
+    "initialMaxBetTotalNative": "1000",
+    "maxBetTotalSetterFloorNative": "100"
+  },
+  "fees": {"developerBps": 100, "swapBps": 500},
+  "treasury": {"maxGameLiabilityBps": 500},
+  "postMining": {
+    "nativeBuybackBps": 7000,
+    "nativeRetainedBps": 3000,
+    "purchasedPplBurnBps": 3000,
+    "purchasedPplPlayerBps": 7000
+  },
+  "amm": {
+    "minimumLiquidityNative": "1",
+    "minimumLiquidityPpl": "1",
+    "maximumSwapInputNative": "100",
+    "maximumReserveImpactBps": 3000,
+    "pricingModel": "constant-product-style",
+    "maticInputFeeDestination": "vaultMatic",
+    "pplInputFeeDestination": "burn"
+  },
+  "vrf": {
+    "requestsPerRound": 1,
+    "randomWordsPerRequest": 1,
+    "defaultCallbackGasLimit": 2000000,
+    "localModeChainIds": [1337, 31337]
+  }
+}

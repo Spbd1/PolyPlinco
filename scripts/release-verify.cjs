@@ -65,6 +65,8 @@ async function main() {
   run("Solidity compile", "node", ["hardhat-test.cjs", "compile"])
   run("contract tests", "node", ["hardhat-test.cjs", "test"])
   run("ABI drift", "node", ["scripts/check-abi.cjs"])
+  run("protocol specification", "node", ["hardhat-run.cjs", "run", "scripts/protocol-spec-check.ts", "--network", "hardhat"])
+  run("deployment configuration", "node", ["scripts/deploy-config-check.cjs"])
   run("TypeScript", "node_modules/.bin/tsc", ["--noEmit"])
   run("ESLint", "node_modules/.bin/eslint", ["."])
   run("RTP regression", "node", ["hardhat-run.cjs", "run", "scripts/rtp-report.ts", "--network", "hardhat"])
